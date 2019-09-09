@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{6989167D-11E4-40FE-8C1A-2192A86A7E90}") = "EFDCPlus_085_OMP", "EFDC\EFDCPlus_085_OMP.vfproj", "{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		DebugDP64|x64 = DebugDP64|x64
+		DebugDP64|x86 = DebugDP64|x86
+		DebugSP64|x64 = DebugSP64|x64
+		DebugSP64|x86 = DebugSP64|x86
+		ReleaseDP|x64 = ReleaseDP|x64
+		ReleaseDP|x86 = ReleaseDP|x86
+		ReleaseDP64|x64 = ReleaseDP64|x64
+		ReleaseDP64|x86 = ReleaseDP64|x86
+		ReleaseSP|x64 = ReleaseSP|x64
+		ReleaseSP|x86 = ReleaseSP|x86
+		ReleaseSP64|x64 = ReleaseSP64|x64
+		ReleaseSP64|x86 = ReleaseSP64|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.DebugDP64|x64.ActiveCfg = DebugDP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.DebugDP64|x64.Build.0 = DebugDP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.DebugDP64|x86.ActiveCfg = DebugDP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.DebugSP64|x64.ActiveCfg = DebugSP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.DebugSP64|x64.Build.0 = DebugSP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.DebugSP64|x86.ActiveCfg = DebugSP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseDP|x64.ActiveCfg = ReleaseDP|Win32
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseDP|x86.ActiveCfg = ReleaseDP|Win32
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseDP|x86.Build.0 = ReleaseDP|Win32
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseDP64|x64.ActiveCfg = ReleaseDP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseDP64|x64.Build.0 = ReleaseDP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseDP64|x86.ActiveCfg = ReleaseDP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseSP|x64.ActiveCfg = ReleaseSP|Win32
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseSP|x86.ActiveCfg = ReleaseSP|Win32
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseSP|x86.Build.0 = ReleaseSP|Win32
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseSP64|x64.ActiveCfg = ReleaseSP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseSP64|x64.Build.0 = ReleaseSP64|x64
+		{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}.ReleaseSP64|x86.ActiveCfg = ReleaseSP64|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
