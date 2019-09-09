@@ -1,0 +1,12 @@
+------------------------------------------------------------------------------
+C19 PERIODIC FORCING (TIDAL) SURF ELEV OR PRESSURE ON WEST OPEN BOUNDARIES
+*
+*  IPBW: SEE CARD 18
+*  JPBW:
+*  ISPBW:
+*  NPFORW:
+*  NPSERW:
+*  TPCOORDW: 
+*  GRPID: ID NUMBER OF BOUNDARY GROUP
+*
+C19    IPBW    JPBW   ISPBW  NPFORW  NPSERW      GRPID ! ID

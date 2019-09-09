@@ -1,0 +1,1368 @@
+MODULE DRIFTER
+  
+! *** DRIFTER.F90 IS A LAGRANGIAN PARTICLE TRACKING MODULE FOR THE DYNAMIC SOLUTIONS-INTERNATIONAL, LLC VERSION OF EFDC (I.E. EFDC_PLUS)
+! *** THIS MODULE COMPLETELY REPLACES THE PREVIOUS VERSIONS OF PARTICLE TRACKING IN EFDC.  
+! *** THE CARDS C67 AND C68 IN THE EFDC.INP FILE WERE LEFT INTACT TO PROVIDE COMPATIBILITY WITH
+! *** OLDER VERSIONS OF EFDC.  
+
+! *** 2018-11  MODIFIED BY PAUL M. CRAIG.  MAJOR REWRITE OF 3D LAGRANGIAN VELOCITY FIELD AND THE CONTAINER FUNCTION
+  
+USE GLOBAL  
+USE OMP_LIB
+USE XYIJCONV
+USE INFOMOD,ONLY:SKIPCOM
+USE IFPORT
+
+IMPLICIT NONE
+
+REAL(RKD),POINTER,PRIVATE  :: ZCTR(:,:)
+REAL(RKD),SAVE,ALLOCATABLE :: LA_BEGTI(:)
+REAL(RKD),SAVE,ALLOCATABLE :: LA_ENDTI(:)
+!REAL(RKD),SAVE,ALLOCATABLE :: XMID(:,:)
+REAL(RKD),SAVE,ALLOCATABLE :: YMID(:,:)
+REAL,SAVE,ALLOCATABLE      :: GRPWS(:)
+
+INTEGER,SAVE,ALLOCATABLE :: LA_GRP(:)
+INTEGER,SAVE,ALLOCATABLE :: NSCNEC(:)
+INTEGER,SAVE,ALLOCATABLE :: BEDFIX(:)           ! OPTION TO FIX A PARTICLE ON BED AFTER DEPOSITION ON BED
+
+REAL(RKD)                :: DELTD,DIFFH,DIFFV
+REAL(8)                  :: EETIME              ! USING REAL*8 EXPLICITY FOR EE LINKAGE REQUIREMENTS
+INTEGER(IK4)             :: NGRP
+INTEGER(IK4)             :: ADJVERP             ! OPTION FOR ADJUSTING VERTICAL POSITION IN CASE OF FULL 3D
+
+CONTAINS
+  
+SUBROUTINE DRIFTERC     
+  ! ***************************************************************************
+  ! SOLVE DIFFERENTIAL EQS. FOR (X,Y,Z):
+  ! DX=U.DELTD+RAN.SQRT(2EH.DELTD)
+  ! DY=V.DELTD+RAN.SQRT(2EH.DELTD)
+  ! DZ=W.DELTD+RAN.SQRT(2EV.DELTD)
+  ! U(L,K),V(L,K),W(L,K),K=1,KC,L=2:LA    CURRENT TIME
+  ! U1(L,K),V1(L,K),W1(L,K),K=1,KC,L=2:LA PREVIOUS TIME
+  ! N: TIME STEP
+  INTEGER(IK4) :: NP,NW,NACT,IT,L
+  INTEGER(4) :: HSIZE,BSIZE,ISOIL
+  INTEGER(4)   :: VER,IX,IY,IZ,IV              ! USING INTEGER*4 EXPLICITY FOR EE LINKAGE REQUIREMENTS
+  
+  REAL(RKD) :: KDX1,KDX2,KDX3,KDX4
+  REAL(RKD) :: KDY1,KDY2,KDY3,KDY4
+  REAL(RKD) :: KDZ1,KDZ2,KDZ3,KDZ4
+  REAL(RKD) :: XLA1,YLA1,ZLA1
+  REAL(RKD) :: U2NP,V2NP,W2NP
+  REAL(RKD) :: DAHX1,DAHY1,DAVZ1,DAHX2,DAHY2,DAVZ2
+  REAL(RKD) :: DXYMIN,KWEIGHT
+  
+  REAL(RKD),SAVE :: TIMENEXT
+  
+  LOGICAL(IK4) :: BEDGEMOVE
+  CHARACTER*80 :: TITLE,METHOD 
+  
+  IF( ISDYNSTP == 0 )THEN  
+    DELTD=DT  
+  ELSE  
+    DELTD=DTDYN  
+  ENDIF  
+
+  !----------FIRST CALL AT GLOBAL RELEASE TIME --------------------------------
+  IF( LA_FIRSTCALL == 1 )THEN
+    DO L=2,LA
+      ZCTR(L,0:KC)=ZZ(L,0:KC)
+      ZCTR(L,KC+1)=Z(L,KC)
+    ENDDO
+    !ALLOCATE(XMID(LA,4),YMID(LA,5))
+    !XMID = 0.0
+    !YMID = 0.0
+    !DO L=2,LA
+    !  XMID(L,1) = XCOR(L,5) + 0.5*( DYP(L)*CVE(L) )   ! *** NORTH
+    !  YMID(L,1) = YCOR(L,5) + 0.5*( DYP(L)*CVN(L) )   ! *** NORTH
+    !  XMID(L,2) = XCOR(L,5) + 0.5*( DXP(L)*CUE(L) )   ! *** EAST
+    !  YMID(L,2) = YCOR(L,5) + 0.5*( DXP(L)*CUN(L) )   ! *** EAST
+    !  XMID(L,3) = XCOR(L,5) - 0.5*( DYP(L)*CVE(L) )   ! *** SOUTH
+    !  YMID(L,3) = YCOR(L,5) - 0.5*( DYP(L)*CVN(L) )   ! *** SOUTH
+    !  XMID(L,4) = XCOR(L,5) - 0.5*( DXP(L)*CUE(L) )   ! *** WEST
+    !  YMID(L,4) = YCOR(L,5) - 0.5*( DXP(L)*CUN(L) )   ! *** WEST
+    !ENDDO
+    NACTT=0
+    NACT = 0
+
+    DXYMIN = MIN(MINVAL(DXP(2:LA)),MINVAL(DYP(2:LA)))
+    IF( DXYMIN <0.2 )THEN
+      XYZSCL = 1000
+    ELSE
+      XYZSCL = 100
+    ENDIF
+    
+    IF( ANY(ISOILSPI == 1)) CALL INIT_OIL  ! GET: DVOL, DARE
+
+    DO NP=1,NPD
+      IF( JSPD(NP) == 1 .AND. TIMEDAY >= LA_BEGTI(NP) .AND. TIMEDAY <= LA_ENDTI(NP) )THEN  
+        CALL CONTAINER(BEDGEMOVE,XLA1,YLA1,ZLA1,NP)    !OUT:LLA,KLA,BELVLA,HPLA
+        JSPD(NP)=0 
+        NACT = NACT+1 
+      ENDIF
+    ENDDO
+    
+    ! *** MAKE SURE THE FILE IS NEW
+    OPEN(ULGR,FILE=OUTDIR//'EE_DRIFTER.OUT',STATUS='UNKNOWN',FORM='BINARY')  
+    CLOSE(ULGR,STATUS='DELETE')
+    OPEN(ULGR,FILE=OUTDIR//'EE_DRIFTER.OUT',ACTION='WRITE',FORM='BINARY')  
+    ISOIL = 0
+    IF( ANY(ISOILSPI == 1) ) ISOIL = 1
+    VER=8400
+    HSIZE = 6*4
+    WRITE(ULGR) VER,HSIZE
+    WRITE(ULGR) INT(NPD,4),INT(KC,4),XYZSCL
+    WRITE(ULGR) ISOIL
+    FLUSH(ULGR)
+    CLOSE(ULGR,STATUS='KEEP')
+    
+    TIMENEXT = TIMEDAY + LA_FREQ + 0.000001_8  
+    LA_FIRSTCALL = 0
+  ENDIF
+
+  ! *** NEXT CALL --------------------------------------------------------------
+  DAHX1=0 
+  DAHY1=0
+  DAVZ1=0
+  DAHX2=0
+  DAHY2=0
+  DAVZ2=0
+  NACT =0
+  NACTT=0
+  MOC  =0
+  IT = 1
+  DIFFH = SQRT(2.*LA_HORDIF*DELTD)
+  DIFFV = SQRT(2.*LA_VERDIF*DELTD)
+
+  !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(NP,BEDGEMOVE,XLA1,YLA1,ZLA1)              &
+  !$OMP  PRIVATE(U2NP,V2NP,W2NP,IT,NW,KWEIGHT)                                        &
+  !$OMP  PRIVATE(KDX1,KDY1,KDZ1,KDX2,KDY2,KDZ2,KDX3,KDY3,KDZ3,KDX4,KDY4,KDZ4)         &
+  !$OMP  FIRSTPRIVATE(DAHX1,DAHY1,DAVZ1,DAHX2,DAHY2,DAVZ2)
+  DO NP=1,NPD 
+    !$ IT = OMP_GET_THREAD_NUM() + 1
+    
+    IF( JSPD(NP) == 1 .AND. TIMEDAY >= LA_BEGTI(NP) )THEN  
+      CALL CONTAINER(BEDGEMOVE,XLA1,YLA1,ZLA1,NP)
+      JSPD(NP) = 0  
+    ENDIF
+        
+    IF( TIMEDAY < LA_BEGTI(NP) .OR. TIMEDAY > LA_ENDTI(NP) )THEN 
+      LLA(NP) = 0
+      CYCLE
+    ENDIF
+    
+    IF( ISOILSPI(LA_GRP(NP)) == 1 .AND. LLA(NP) >= 2 )THEN
+      CALL OIL_PROC(NP)            ! *** CALCULATE DVOL(NP)
+      IF( DVOL(NP) <= 1D-9 )THEN
+        LLA(NP) = 0
+        PRINT '(A41,I6)','DRIFTER EXPIRED DUE TO EVAPOR. & BIODEG.:',NP 
+        CYCLE
+      ENDIF
+    ENDIF
+    
+    IF( BEDFIX(LA_GRP(NP)) == 1 .AND. LLA(NP) >= 2 ) THEN
+      IF( ABS(ZLA(NP)-BELVLA(NP)) <= 1D-12 ) THEN
+        LLA(NP) = 0
+        PRINT '(A38,I6)','DRIFTER HAS STOPPED DUE TO DEPOSITION:',NP 
+        CYCLE
+      ENDIF
+    ENDIF
+    
+    IF( LLA(NP) < 2 ) CYCLE
+    IF( ISDRY > 0 .AND. HP(LLA(NP)) < HDRY ) CYCLE
+    XLA1 = XLA(NP)
+    YLA1 = YLA(NP)
+    ZLA1 = ZLA(NP)
+
+    NW=LA_GRP(NP)
+    BEDGEMOVE = .FALSE.
+    NACTT(IT) = NACTT(IT)+1 
+
+    ! *** APPLY DEPTH CHANGE ON VERTICAL POSITION
+    IF( LA_ZCAL == 1 .AND. ADJVERP == 1) THEN
+      ZLA1 = ZLA1 + (HP(LLA(NP))-H1P(LLA(NP)))*(ZLA1-BELVLA(NP))/HPLA(NP)
+    ENDIF
+
+     IF( LA_DIFOP /= 0 .OR. ISHDMF == 0 )THEN
+      KDX1 = 0.
+      KDY1 = 0.
+      KDZ1 = 0.
+      KDX2 = 0.
+      KDY2 = 0.
+      KDZ2 = 0.
+      KDX3 = 0.
+      KDY3 = 0.
+      KDZ3 = 0.
+      KWEIGHT = 1.
+      GOTO 4
+    ELSE
+      KWEIGHT = 6.0
+    ENDIF
+    ! ***************************************************************************************
+    ! *** RUNGE-KUTTA
+    ! *** PASS 1
+    CALL DRIFVELCAL(LLA(NP),KLA(NP),NP,U2NP,V2NP,W2NP)
+    
+    IF( LA_DIFOP == 0 .AND. ISHDMF > 0 ) CALL DIFGRAD(LLA(NP),KLA(NP),NP,DAHX1,DAHY1,DAVZ1)
+    KDX1 = DELTD*(U2NP + DAHX1)  
+    KDY1 = DELTD*(V2NP + DAHY1)  
+    XLA(NP)  = XLA1 + 0.5*KDX1
+    YLA(NP)  = YLA1 + 0.5*KDY1
+    IF( LA_ZCAL == 1 )THEN
+      KDZ1 = DELTD*(W2NP - GRPWS(NW) + DAVZ1) 
+      ZLA(NP) = ZLA1 + 0.5*KDZ1
+    ELSE
+      ZLA(NP) = HPLA(NP) + BELVLA(NP) - DLA(NP)
+    ENDIF
+    CALL CONTAINER(BEDGEMOVE,XLA1,YLA1,ZLA1,NP)
+
+    IF( LLA(NP) < 2 .OR. BEDGEMOVE ) CYCLE
+
+    ! *** PASS 2
+    CALL DRIFVELCAL(LLA(NP),KLA(NP),NP,U2NP,V2NP,W2NP)
+    
+    IF( LA_DIFOP == 0 .AND. ISHDMF > 0 ) CALL DIFGRAD(LLA(NP),KLA(NP),NP,DAHX2,DAHY2,DAVZ2)
+    KDX2 = DELTD*(U2NP + DAHX2)           
+    KDY2 = DELTD*(V2NP + DAHY2)           
+    XLA(NP)  = XLA1 + 0.5*KDX2
+    YLA(NP)  = YLA1 + 0.5*KDY2
+    IF( LA_ZCAL == 1 )THEN
+      KDZ2 = DELTD*(W2NP - GRPWS(NW) + DAVZ2) 
+      ZLA(NP) = ZLA1 + 0.5*KDZ2
+    ELSE
+      ZLA(NP) = HPLA(NP) + BELVLA(NP) - DLA(NP)
+    ENDIF
+    CALL CONTAINER(BEDGEMOVE,XLA1,YLA1,ZLA1,NP)
+
+    IF( LLA(NP) < 2 .OR. BEDGEMOVE ) CYCLE
+
+    ! *** PASS 3
+    CALL DRIFVELCAL(LLA(NP),KLA(NP),NP,U2NP,V2NP,W2NP)
+    
+    IF( LA_DIFOP == 0 .AND. ISHDMF > 0 ) CALL DIFGRAD(LLA(NP),KLA(NP),NP,DAHX2,DAHY2,DAVZ2)
+    KDX3 = DELTD*(U2NP + DAHX2)  
+    KDY3 = DELTD*(V2NP + DAHY2)  
+    XLA(NP)  = XLA1 + KDX3
+    YLA(NP)  = YLA1 + KDY3
+    IF( LA_ZCAL == 1 )THEN
+      KDZ3 = DELTD*(W2NP - GRPWS(NW) + DAVZ2) 
+      ZLA(NP) = ZLA1 + KDZ3
+    ELSE
+      ZLA(NP) = HPLA(NP) + BELVLA(NP) - DLA(NP)
+    ENDIF
+    CALL CONTAINER(BEDGEMOVE,XLA1,YLA1,ZLA1,NP)
+
+    IF( LLA(NP) < 2 .OR. BEDGEMOVE ) CYCLE
+    
+    ! *** PASS 4
+    4 CONTINUE
+    CALL DRIFVELCAL(LLA(NP),KLA(NP),NP,U2NP,V2NP,W2NP)
+    
+    IF( LA_DIFOP == 0 .AND. ISHDMF > 0 ) CALL DIFGRAD(LLA(NP),KLA(NP),NP,DAHX2,DAHY2,DAVZ2)
+    KDX4 = DELTD*(U2NP+DAHX2)                 
+    KDY4 = DELTD*(V2NP+DAHY2)                 
+    XLA(NP) = XLA1 + (KDX1 + 2.0*KDX2 + 2.0*KDX3 + KDX4)/KWEIGHT
+    YLA(NP) = YLA1 + (KDY1 + 2.0*KDY2 + 2.0*KDY3 + KDY4)/KWEIGHT
+    IF( LA_ZCAL == 1 )THEN
+      KDZ4 = DELTD*(W2NP-GRPWS(NW)+DAVZ2)   
+      ZLA(NP) = ZLA1 + (KDZ1 + 2.0*KDZ2 + 2.0*KDZ3 + KDZ4)/KWEIGHT 
+    ELSE
+      ZLA(NP) = HPLA(NP) + BELVLA(NP) - DLA(NP)
+    ENDIF
+    
+    ! *** RANDOM-WALK COMPONENT
+    IF( LA_PRAN > 0 ) CALL RANDCAL(LLA(NP),KLA(NP),NP)
+    CALL CONTAINER(BEDGEMOVE,XLA1,YLA1,ZLA1,NP)
+    
+    IF( LLA(NP) >= 2 .AND. LLA(NP) <= LA .AND. ISOILSPI(LA_GRP(NP)) == 1 ) THEN
+      MOC(LLA(NP)) = MOC(LLA(NP)) + DVOL(NP)*DDEN(LA_GRP(NP))                ! TOTAL MASS OF OIL (KG) AT A CELL
+    ENDIF
+  ENDDO
+  !$OMP END PARALLEL DO
+ 
+  ! *** WRITE THE CURRENT TRACK POSITION
+  
+  IF( TIMEDAY >= TIMENEXT )THEN
+    OPEN(ULGR,FILE=OUTDIR//'EE_DRIFTER.OUT',STATUS='UNKNOWN',FORM='BINARY',POSITION='APPEND')     
+    EETIME = TIMEDAY
+    WRITE(ULGR) EETIME
+    NACT=0  !SUM(NACTT(:))
+    DO NP=1,NPD 
+      IF( LLA(NP) >= 2 ) NACT = NACT+1
+    ENDDO
+    WRITE(ULGR) INT(NACT,4)
+    IF( ANY(ISOILSPI == 1) )THEN
+      DO NP=1,NPD  
+        IX = NINT(XYZSCL*XLA(NP))      ! SCALED
+        IY = NINT(XYZSCL*YLA(NP))      ! SCALED
+        IZ = NINT(XYZSCL*ZLA(NP))      ! SCALED
+        IV = NINT(1D6*DVOL(NP))        ! IN CUBIC CM
+        IF( LLA(NP) >= 2 ) WRITE(ULGR) INT(NP,4),INT(LLA(NP),4),IX,IY,IZ,IV
+      ENDDO
+    ELSE
+      DO NP=1,NPD  
+        IX = NINT(XYZSCL*XLA(NP))      ! SCALED
+        IY = NINT(XYZSCL*YLA(NP))      ! SCALED
+        IZ = NINT(XYZSCL*ZLA(NP))      ! SCALED
+        IF( LLA(NP) >= 2 ) WRITE(ULGR) INT(NP,4),INT(LLA(NP),4),IX,IY,IZ
+      ENDDO
+    ENDIF
+    FLUSH(ULGR)
+    CLOSE(ULGR,STATUS='KEEP') 
+    TIMENEXT = TIMENEXT+LA_FREQ
+  ENDIF  
+
+END SUBROUTINE
+
+SUBROUTINE DRIFTERINP
+  ! ********************************************************************
+  !READING INPUT DATA OF INITIAL LOCATIONS OF DRIFTERS
+  !OUTPUT: NPD,XLA,YLA,ZLA,NP=1:NPD
+  !        LA_BEGTI, LA_ENDTI, LA_FREQ,LANDT
+  INTEGER :: NP,N,K,NPN,IN,JN,IS,JS
+  REAL(RKD) :: RANVAL
+  !REAL(8),EXTERNAL :: DRAND   !IT NEEDS THIS STATEMENT IN CASE OF IMPLICIT NONE
+  CHARACTER(200)  :: STR
+  
+  WRITE(*,'(A)')'READING DRIFTER.INP'
+  OPEN(ULOC,FILE='drifter.inp',ACTION='READ')
+  CALL SKIPCOM(ULOC,'*')
+  READ(ULOC,*) LA_ZCAL,LA_PRAN,LA_DIFOP,LA_HORDIF,LA_VERDIF,DEPOP,ADJVERP,SLIPFACTOR    ! AUG 2016: NEW STRUCTURE 
+  CALL SKIPCOM(ULOC,'*')
+  READ(ULOC,*) LA_BEGTI0,LA_ENDTI0,LA_FREQ
+  CALL SKIPCOM(ULOC,'*')
+  READ(ULOC,*) NPD,NGRP
+  WRITE(*,'(A41,I8)')'DRIFTER: NUMBER OF DRIFTERS INITIALZED: ',NPD
+  LA_FREQ = LA_FREQ/1440.                             !Output Frequency 
+  
+  ! *** ALLOCATE THE DRIFTER ARRAYS
+  ALLOCATE(XLA(NPD),YLA(NPD),ZLA(NPD),DLA(NPD))
+  ALLOCATE(LLA(NPD),KLA(NPD),HPLA(NPD),BELVLA(NPD))
+  ALLOCATE(LA_BEGTI(NPD),LA_ENDTI(NPD),LA_GRP(NPD),JSPD(NPD))
+
+  ALLOCATE(ZCTR(LCM,0:KC+1))
+  ALLOCATE(NSCNEC(LCM),BEDFIX(NGRP))
+  ALLOCATE(NACTT(NTHREADS))
+  ALLOCATE(DARE(NGRP),DTEM(NGRP),GRPWS(NGRP),ISOILSPI(NGRP),DVOL0(NGRP))
+  ALLOCATE(DVAP(NGRP),DVMO(NGRP),DDEN(NGRP), DRAT(NGRP),GVOL(NGRP))
+  
+  ALLOCATE(MOC(LA))
+  
+  ! *** INIITALIZE THE ARRAYS (NPD)
+  XLA=0.0
+  YLA=0.0
+  ZLA=0.0
+  DLA=0.0
+  HPLA=0.0
+  BELVLA=0.0
+  LA_BEGTI=0.0
+  LA_ENDTI=0.0
+  LA_GRP=0
+  LLA = 0
+  KLA = 0
+  JSPD= 0
+  MOC = 0
+  
+  ! *** INIITALIZE THE ARRAYS (NGRP)
+  GRPWS=0.0
+  DARE=0.0
+  DTEM=0.0
+  DVAP=0.0
+  DVMO=0.0
+  DDEN=0.0
+  DRAT=0.0
+  GVOL=0.0
+  DVOL0=0
+  ISOILSPI=0
+
+  ZCTR=0.0
+  NACTT= 0
+
+  CALL SKIPCOM(ULOC,'*')
+  DO N=1,NGRP
+    READ(ULOC,'(A)') STR
+    READ(STR,*) K,ISOILSPI(K),GRPWS(K),BEDFIX(K)
+    IF( ISOILSPI(K) > 0 )THEN
+      READ(STR,*) K,ISOILSPI(K),GRPWS(K),BEDFIX(K),GVOL(K),DDEN(K),DRAT(K),DTEM(K),DVAP(K),DVMO(K)
+      DRAT(K)=DRAT(K)/86400.
+    ENDIF
+  ENDDO
+  LLA = 0
+  KLA = 0  
+  HPLA= 0
+  ZLA = 0
+  JSPD = 1
+  LA_FIRSTCALL = 1
+  NSCNEC = 0
+  DO NPN=1,NPNSBP
+    IN=INPNS(NPN)
+    JN=JNPNS(NPN)
+    IS=ISPNS(NPN)
+    JS=JSPNS(NPN)
+    NSCNEC(LIJ(IN,JN)) = 1
+    NSCNEC(LIJ(IS,JS)) = 2
+  ENDDO
+
+  CALL SKIPCOM(ULOC,'*')
+  IF( DEPOP == 1 )THEN
+    DO NP=1,NPD
+       ! *** Read Depths
+      READ(ULOC,*,ERR=999) XLA(NP),YLA(NP),DLA(NP),LA_BEGTI(NP),LA_ENDTI(NP),LA_GRP(NP)
+      DLA(NP) = MAX(DLA(NP),0.0_RKD)
+      IF( LA_GRP(NP) < 1) LA_GRP(NP)=1
+    ENDDO
+  ELSE
+    DO NP=1,NPD
+       ! *** Read Elevations
+      READ(ULOC,*,ERR=999) XLA(NP),YLA(NP),ZLA(NP),LA_BEGTI(NP),LA_ENDTI(NP),LA_GRP(NP)
+      IF( LA_GRP(NP) < 1)LA_GRP(NP)=1
+    ENDDO
+  ENDIF
+  CLOSE(ULOC)
+  IF( LA_PRAN > 0 ) RANVAL = DRAND(1)
+  !IF( LA_DIFOP == 0 ) THEN
+  !  LA_HORDIF = MIN(LA_HORDIF,0.1)
+  !  LA_VERDIF = MIN(LA_VERDIF,0.1)
+  !ENDIF
+    
+  RETURN
+  999 STOP 'DRIFTER.INP READING ERROR!'
+  
+END SUBROUTINE
+
+SUBROUTINE CONTAINER(BEDGEMOVE,XLA2,YLA2,ZLA2,NI)   !**********************************************
+
+  ! ***
+
+  ! *** DETERMINING LLA,KLA,BELVLA,HPLA FOR THE FIRST CALL
+  ! *** UPDATING XLA,YLA,LLA,KLA,BELVLA,HPLA FOR THE NEXT CALL
+  ! *** FOR EACH DRIFTER (XLA,YLA,ZLA)
+  ! *** BY FINDING THE NEAREST CELL CENTROID
+  ! *** THEN EXPANDING TO THE NEIGHBOUR CELLS
+  ! *** HP(LIJ(I,J))     : WATER DEPTH = WATER SUR. - BELV
+  ! *** BELV(LIJ(I,J))   : BOTTOM ELEVATION OF A CELL
+  ! *** BELVLA           : BED ELEVATION AT DRIFTER NI POSITION
+  ! *** HPLA             : WATER DEPTH AT DRIFTER NI POSITION
+  ! *** DLON(L),L=2:LA ? : CELL CENTROID XCEL = XCOR(L,5)
+  ! *** DLAT(L),L=2:LA ? : CELL CENTROID YCEL = YCOR(L,5)
+  ! ***
+  ! *** INPUT:
+  ! *** IF DEPOP=0: XLA,YLA,ZLA,XCOR(L,5),YCOR(L,5),BELV,HP
+  ! *** IF DEPOP=1: XLA,YLA,    XCOR(L,5),YCOR(L,5),BELV,HP,DLA
+  ! *** OUTPUT:
+  ! ***             XLA,YLA,LLA(NP),KLA(NP),BELVLA(NP),HPLA(NP)
+
+  REAL(RKD) ,INTENT(IN)   :: XLA2,YLA2,ZLA2
+  LOGICAL(4),INTENT(INOUT) :: BEDGEMOVE
+  INTEGER,INTENT(IN)   :: NI
+  INTEGER :: NPSTAT,NWR,NS,NPN,LLO,LI
+  INTEGER :: LMILOC(1),K,L,ILN,JLN,LE,LN,LM,LLL,LLA2
+  INTEGER :: LLREC(9),LL,LU,LD
+  REAL(RKD) :: RADLA(LA),VELEK,VELNK,VPRO,XXO,YYO,DMIN,D,X0,Y0,X3,Y3,XP,YP,UTMPB,VTMPB,OFF,PMCTIME
+  LOGICAL(4) :: LINSIDE 
+
+  ! *** DETERMINE THE NEAREST CELL CENTROID 
+  IF( JSPD(NI) == 1 )THEN
+    ! *** GET CELL FOR THE FIRST CALL                     
+    RADLA(2:LA) = SQRT((XLA(NI)-XCOR(2:LA,5))**2+(YLA(NI)-YCOR(2:LA,5))**2) !MAY 11, 2009
+    LMILOC = MINLOC(RADLA(2:LA))
+    ILN = IL(LMILOC(1)+1)    !I OF THE NEAREST CELL FOR DRIFTER
+    JLN = JL(LMILOC(1)+1)    !J OF THE NEAREST CELL FOR DRIFTER     
+    LLO = LIJ(ILN,JLN)
+
+    ! *** CHECK IF DRIFTER IS INSIDE THE CELL
+    IF( INSIDECELL(LLO,XLA(NI),YLA(NI)) )THEN
+      ! *** DRIFTER IS IN THE CELL.  DETERMINE ALL OF THE SETTINGS
+      LLA(NI) = LLO
+
+      CALL DRIFTERWDEP(LLA(NI),NI,BELVLA(NI),HPLA(NI))
+      
+      CALL DRIFTERLAYER(LLA(NI),BELVLA(NI),HPLA(NI),KLA(NI),ZLA(NI))     
+      
+      !THE FIRST CALL: CONVERT DLA TO DLA/ZLA
+      IF( DEPOP == 1 )THEN
+        ZLA(NI) = HPLA(NI) + BELVLA(NI)-DLA(NI)
+      ELSE
+        DLA(NI) = MAX(HPLA(NI)+BELVLA(NI)-ZLA(NI),0._8)
+      ENDIF
+      IF( ISOILSPI(LA_GRP(NI)) == 1 .AND. DDEN(LA_GRP(NI)) < 1000. .AND. GRPWS(LA_GRP(NI)) == 0. )THEN
+        ! *** FORCE OIL TO SURFACE IF NOT USING SETTLING/RISING VELOCITIES
+        DLA(NI) = 0.005
+        ZLA(NI) = HPLA(NI) + BELVLA(NI)-DLA(NI)
+      ENDIF
+    ENDIF
+    RETURN
+  ENDIF
+  
+  ! *************************************  NORMAL PROCESSING  *********************************************
+  ! *** CHECK IF OLD AND NEW POSITIONS ARE IN THE SAME CELL
+  IF( INSIDECELL(LLA(NI),XLA(NI),YLA(NI)) )THEN
+    CALL DRIFTERWDEP(LLA(NI),NI,BELVLA(NI),HPLA(NI))
+    CALL DRIFTERLAYER(LLA(NI),BELVLA(NI),HPLA(NI),KLA(NI),ZLA(NI))     
+    RETURN
+  ENDIF
+
+  ! *** EITHER THE DRIFTER IS OUTSIDE THE DOMAIN OR HAS CHANGED CELLS.  PROCESSES THE CHANGE
+    
+  ! *** SAVE THE DRIFTER INFORMATION BEFORE ANY CHANGES BY EDGEMOVE
+  ILN = IL(LLA(NI))        
+  JLN = JL(LLA(NI))
+  LLO = LLA(NI)
+  XXO = XLA(NI)
+  YYO = YLA(NI)
+  
+  ! *** DETERMINE THE CELL CONTAINING THE DRIFTER WITHIN 9 CELLS: LLA(NI)
+  NPSTAT = 0
+  LLREC(1) = LNWC(LLO)
+  LLREC(2) = LNC(LLO)
+  LLREC(3) = LNEC(LLO)
+  LLREC(4) = LWC(LLO) 
+  LLREC(5) = 1        ! *** LLO ALREADY TESTED
+  LLREC(6) = LEC(LLO) 
+  LLREC(7) = LSWC(LLO)
+  LLREC(8) = LSC(LLO)
+  LLREC(9) = LSEC(LLO)
+  LINSIDE = .FALSE.
+  LI = 0
+
+  DO LL =1,9   
+    L = LLREC(LL)
+    IF( L < 2 .OR. L > LA ) CYCLE
+    
+    IF( INSIDECELL(L,XLA(NI),YLA(NI)) )THEN     
+      ! *** PARTICLE IS INSIDE CURRENT CELL FOR NEXT CALL
+      ! *** DEALING WITH THE WALLS
+      LINSIDE = .TRUE.
+      LI = LL
+      IF( LL == 1 )THEN
+        ! *** NORTHWEST
+        IF( (SUB(LLO) > 0.5 .AND. SVB(L) > 0.5) .OR. (SVB(LLREC(2)) > 0.5 .AND. SUB(LLREC(2)) > 0.5) )THEN
+          LLA(NI) = L
+          NPSTAT = 1
+        ENDIF
+      ELSEIF( LL == 2 .AND. SVB(LLREC(2)) > 0.5 )THEN
+        ! *** NORTH
+        LLA(NI) = L
+        NPSTAT = 1
+      ELSEIF( LL == 3 )THEN  ! .AND. (SVB(LLREC(2)) > 0.5 .OR. SUB(LLREC(6)) > 0.5) )THEN
+        ! *** NORTHEAST
+        IF( (SUB(LLREC(6)) > 0.5 .AND. SVB(LLREC(3)) > 0.5) .OR. (SVB(LLREC(2)) > 0.5 .AND. SUB(LLREC(3)) > 0.5) )THEN
+          LLA(NI) = L
+          NPSTAT = 1
+        ENDIF
+      ELSEIF( LL == 4 .AND. SUB(LLO) > 0.5 )THEN
+        ! *** WEST
+        LLA(NI) = L
+        NPSTAT = 1
+      ELSEIF( LL == 6 .AND. SUB(LLREC(6)) > 0.5 )THEN
+        ! *** EAST
+        LLA(NI) = L
+        NPSTAT = 1
+      ELSEIF( LL == 7 )THEN  ! .AND. (SVB(L) > 0.5 .OR. SUB(L) > 0.5) )THEN
+        ! *** SOUTHWEST
+        IF( (SUB(LLO) > 0.5 .AND. SVB(LLREC(4)) > 0.5) .OR. (SVB(LLO) > 0.5 .AND. SUB(LLREC(8)) > 0.5) )THEN
+          LLA(NI) = L
+          NPSTAT = 1
+        ENDIF
+      ELSEIF( LL == 8 .AND. SVB(LLO) > 0.5 )THEN
+        ! *** SOUTH
+        LLA(NI) = L
+        NPSTAT = 1
+      ELSEIF( LL == 9 )THEN  ! .AND. (SVB(L) > 0.5 .OR. SUB(LE) > 0.5) )THEN
+        ! *** SOUTHEAST
+        IF( (SUB(LLREC(6)) > 0.5 .AND. SVB(LLREC(6)) > 0.5) .OR. (SVB(LLO) > 0.5 .AND. SUB(LLREC(9)) > 0.5) )THEN
+          LLA(NI) = L
+          NPSTAT = 1
+        ENDIF
+      ENDIF
+
+      EXIT
+      
+    ELSE
+      ! *** NOT IN CELL L, CHECK SPECIAL CONDITIONS
+      IF( NSCNEC(LLO) >= 1 .AND. NSCNEC(L) >= 1 )THEN    !N-S connection
+        IF( (L == LNC(LLO) .AND. SVB(L) > 0.5) .OR. (L == LSC(LLO) .AND. SVB(LLO) > 0.5) )THEN
+          VELEK = CUE(LLO)*U(LLO,KC) + CVE(LLO)*V(LLO,KC)  
+          VELNK = CUN(LLO)*U(LLO,KC) + CVN(LLO)*V(LLO,KC)  
+          VPRO  = VELEK*(XCOR(L,5)-XCOR(LLO,5)) + VELNK*(YCOR(L,5)-YCOR(LLO,5))
+          IF( VPRO > 0 )THEN
+            LLA(NI) = L
+            !XLA(NI) = XCOR(L,5)
+            !YLA(NI) = YCOR(L,5)
+            NPSTAT  = 1          
+            EXIT
+          ENDIF          
+        ENDIF
+      ENDIF
+    ENDIF
+  
+  ENDDO 
+  
+  ! *** CHECK IF THE PARTICLE IS INSIDE THE MODEL DOMAIN
+  IF( NPSTAT == 0 )THEN
+    ! *** CHECK IF THE PARTICLES SHOULD EXIT DOMAIN
+    CALL CHECK_BCS
+    
+    ! *** IF LLO IS NOT A BC CELL THEN CONTINUE PROCESSING
+    IF( LLA(NI) > 1 )THEN
+      ! *** UPDATE POSITION BASED ON EDGE VELOCITIES (HALF OF CELL CENTERED)
+      X0 = XLA(NI)
+      Y0 = YLA(NI)
+      
+      ! **********************************************************************************
+      D = 1E32
+      IF( LINSIDE .AND. LI > 0 )THEN
+        ! *** PARTICLE IS INSIDE AN INVALID CELL.  MOVE TO VALID
+        LLL = LLO
+        IF( LI == 2 )THEN
+          OFF = 0.01*DYP(LLO)
+          CALL DIST2LINE(LLO,2,X0,Y0,1,OFF,D,X3,Y3)     ! *** NORTH EDGE
+
+        ELSEIF( LI == 4 )THEN
+          OFF = 0.01*DXP(LLO)
+          CALL DIST2LINE(LLO,1,X0,Y0,1,OFF,D,X3,Y3)     ! *** WEST EDGE
+        
+        ELSEIF( LI == 6 )THEN
+          OFF = 0.01*DXP(LLO)
+          CALL DIST2LINE(LLO,3,X0,Y0,1,OFF,D,X3,Y3)     ! *** EAST EDGE
+        
+        ELSEIF( LI == 8 )THEN
+          OFF = 0.01*DYP(LLO)
+          CALL DIST2LINE(LLO,4,X0,Y0,1,OFF,D,X3,Y3)     ! *** SOUTH EDGE
+        
+        ELSEIF( LL == 1 )THEN
+          ! *** NORTHWEST
+          IF( SUB(LLO) > 0.5 )THEN
+            L = LLREC(4)
+            OFF = 0.01*DYP(L)
+            CALL DIST2LINE(L,2,X0,Y0,1,OFF,D,X3,Y3)     ! *** NORTH EDGE
+            LLL = L
+          ELSEIF( SVB(LLREC(2)) > 0.5 )THEN
+            L = LLREC(2)
+            OFF = 0.01*DXP(L)
+            CALL DIST2LINE(L,1,X0,Y0,1,OFF,D,X3,Y3)     ! *** WEST EDGE
+            LLL = L
+          ENDIF
+        ELSEIF( LL == 3 )THEN
+          ! *** NORTHEAST
+          IF( SUB(LLREC(6)) > 0.5 )THEN
+            L = LLREC(6)
+            OFF = 0.01*DYP(L)
+            CALL DIST2LINE(L,2,X0,Y0,1,OFF,D,X3,Y3)     ! *** NORTH EDGE
+            LLL = L
+          ELSEIF( SVB(LLREC(2)) > 0.5 )THEN
+            L = LLREC(2)
+            OFF = 0.01*DXP(L)
+            CALL DIST2LINE(L,3,X0,Y0,1,OFF,D,X3,Y3)     ! *** EAST EDGE
+            LLL = L
+          ENDIF
+        ELSEIF( LL == 7 )THEN
+          ! *** SOUTHWEST
+          IF( SUB(LLO) > 0.5 )THEN
+            L = LLREC(4)
+            OFF = 0.01*DYP(L)
+            CALL DIST2LINE(L,4,X0,Y0,1,OFF,D,X3,Y3)     ! *** SOUTH EDGE
+            LLL = L
+          ELSEIF( SVB(LLO) > 0.5 )THEN
+            L = LLREC(8)
+            OFF = 0.01*DXP(L)
+            CALL DIST2LINE(L,1,X0,Y0,1,OFF,D,X3,Y3)     ! *** WEST EDGE
+            LLL = L
+          ENDIF
+        ELSEIF( LL == 9 )THEN
+          ! *** SOUTHEAST
+          IF( SUB(LLREC(6)) > 0.5 )THEN
+            L = LLREC(6)
+            OFF = 0.01*DYP(L)
+            CALL DIST2LINE(L,4,X0,Y0,1,OFF,D,X3,Y3)     ! *** SOUTH EDGE
+            LLL = L
+          ELSEIF( SVB(LLO) > 0.5 )THEN
+            L = LLREC(8)
+            OFF = 0.01*DXP(L)
+            CALL DIST2LINE(L,3,X0,Y0,1,OFF,D,X3,Y3)     ! *** EAST EDGE
+            LLL = L
+          ENDIF
+        ENDIF
+      
+        IF( ABS(D) < 1.E32 )THEN
+          IF( INSIDECELL(LLL,X3,Y3) )THEN
+            BEDGEMOVE = .TRUE.
+            XLA(NI) = X3
+            YLA(NI) = Y3
+            LLA(NI) = LLL
+          ELSE
+            XLA(NI) = XXO
+            YLA(NI) = YYO
+            LLA(NI) = LLO
+          ENDIF
+        ELSE
+          XLA(NI) = XXO
+          YLA(NI) = YYO
+          LLA(NI) = LLO
+        ENDIF
+      
+        CALL DRIFTERWDEP(LLA(NI),NI,BELVLA(NI),HPLA(NI))
+        CALL DRIFTERLAYER(LLA(NI),BELVLA(NI),HPLA(NI),KLA(NI),ZLA(NI))     
+        
+        RETURN
+      ENDIF
+    
+      ! **********************************************************************************
+      ! *** PARTICLE IS OUTSIDE DOMAIN
+
+      ! *** FIND CLOSEST FACE CONNECTED CELL (NEEDED TO ADDRESS SMALL GAPS BETWEEN CELLS)
+      DMIN = 1E32
+      LLL = 0
+      DO LL=1,4
+        IF( LL == 1 .OR. LL == 3 )THEN
+          OFF = 0.01*DXP(LLO)
+          CALL DIST2LINE(LLO,LL,X0,Y0,1,OFF,D,X3,Y3)
+        ELSE
+          OFF =  0.01*DYP(LLO)
+          CALL DIST2LINE(LLO,LL,X0,Y0,1,OFF,D,X3,Y3)
+        ENDIF
+        IF( ABS(D) < ABS(DMIN) .AND. ABS(D) < (25.*OFF) )THEN
+          DMIN = D
+          LLL = LL
+          XP = X3
+          YP = Y3
+        ENDIF
+      ENDDO
+    
+      IF( LLL /= 0 )THEN
+        ! *** FOUND AN EDGE, SEE IF IT IS ADJACENT TO A ACTIVE CELL
+        L = 0
+        IF( LLL == 2 )THEN
+          L = LNC(LLO)             ! *** NORTH
+          IF( SVB(L) > 0.5 )THEN
+            LLA(NI) = L
+            NPSTAT = 1
+          ENDIF
+        ELSEIF( LLL == 3 )THEN
+          L = LEC(LLO)             ! *** EAST
+          IF( SUB(L) > 0.5 )THEN
+            LLA(NI) = L
+            NPSTAT = 1
+          ENDIF
+        ELSEIF( LLL == 4 )THEN
+          L = LLO                  ! *** SOUTH
+          IF( SVB(L) > 0.5 )THEN
+            LLA(NI) = LSC(L)
+            NPSTAT = 1
+          ENDIF
+        ELSEIF( LLL == 1 )THEN
+          L = LLO                  ! *** WEST
+          IF( SUB(L) > 0.5 )THEN
+            LLA(NI) = LWC(L)
+            NPSTAT = 1
+          ENDIF
+        ENDIF
+      
+        IF( NPSTAT == 0 )THEN
+          ! *** MOVE THE PARTICLE BACK INTO THE ORIGINAL CELL
+          LLA(NI) = LLO
+          NPSTAT = 1
+          XLA(NI) = XP
+          YLA(NI) = YP
+          BEDGEMOVE = .TRUE.
+          
+        ENDIF
+      ENDIF
+      
+      IF( NPSTAT == 0 )THEN
+        ! *** PARTICLE MUST BE IN ONE OF THE CORNER CELLS
+
+        ! ***
+        ! ***
+      
+        DMIN = 1E32
+        LLL = 1
+        DO LL=1,4
+          D = SQRT((XLA(NI)-XCOR(LLO,LL))**2 + (YLA(NI)-YCOR(LLO,LL))**2) 
+          IF( D < DMIN )THEN
+            DMIN = D
+            LLL = LL
+          ENDIF
+        ENDDO
+    
+        ! *** PLACE THE PARTICLE IN THE ASSOCIATED CORNER
+        BEDGEMOVE = .TRUE.
+        NPSTAT = 1
+        OFF = 0.01
+        X0 = OFF*DXP(LLO)
+        Y0 = OFF*DYP(LLO)
+        IF( LLL == 1 )THEN
+          XLA(NI) = XCOR(LLO,LLL) - (-X0 * CUE(LLO) - Y0 * CVE(LLO))
+          YLA(NI) = YCOR(LLO,LLL) - (-X0 * CUN(LLO) - Y0 * CVN(LLO))
+        ELSEIF( LLL == 2 )THEN
+          XLA(NI) = XCOR(LLO,LLL) - (-X0 * CUE(LLO) + Y0 * CVE(LLO))
+          YLA(NI) = YCOR(LLO,LLL) - (-X0 * CUN(LLO) + Y0 * CVN(LLO))
+        ELSEIF( LLL == 3 )THEN
+          XLA(NI) = XCOR(LLO,LLL) - (X0 * CUE(LLO) + Y0 * CVE(LLO))
+          YLA(NI) = YCOR(LLO,LLL) - (X0 * CUN(LLO) + Y0 * CVN(LLO))
+        ELSEIF( LLL == 4 )THEN
+          XLA(NI) = XCOR(LLO,LLL) - (X0 * CUE(LLO) - Y0 * CVE(LLO))
+          YLA(NI) = YCOR(LLO,LLL) - (X0 * CUN(LLO) - Y0 * CVN(LLO))
+        ELSE
+          LLA(NI) = 1
+          NPSTAT = 0
+        ENDIF
+      ENDIF
+    ENDIF
+  
+  ELSE    ! IF( NPSTAT == 1 )THEN
+    IF( ANY(IQCTLU == IL(LLA(NI))) .AND. ANY(JQCTLU == JL(LLA(NI))) )THEN
+      ! *** HYDRAULIC STRUCTURE.  RETURN DRIFTER TO DOWNSTREAM CELL, IF ANY
+      LLA2=LLA(NI)
+      DO K=1,NQCTL
+        LU = LIJ(IQCTLU(K),JQCTLU(K))
+        LD = LIJ(MAX(IQCTLD(K),1),MAX(JQCTLD(K),1))
+        IF( LU == LLA2 .AND. LD >= 2 )THEN
+          LLA(NI) = LD
+          XLA(NI) = XCOR(LLA(NI),5)
+          YLA(NI) = YCOR(LLA(NI),5)
+          ZLA(NI) = BELV(LD)+HP(LD)
+          BEDGEMOVE = .TRUE.
+          EXIT
+        ELSEIF( LU == LLA2 .AND. LD < 2 )THEN
+          PRINT '(A40,I6)','HYDRAULIC STRUCTURE, DRIFTER IS OUTSIDE:',NI
+          CALL SET_DRIFTER_OUT(XLA2,YLA2,ZLA2)
+          EXIT
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDIF
+  
+  ! *** DETERMINE BOTTOM ELEVATION AND TOTAL WATER DEPTH OF DRIFTERS FOR EVERY TIMESTEP
+  IF( LLA(NI) >= 2 ) CALL DRIFTERWDEP(LLA(NI),NI,BELVLA(NI),HPLA(NI))
+      
+  IF( LLA(NI) >= 2 ) CALL DRIFTERLAYER(LLA(NI),BELVLA(NI),HPLA(NI),KLA(NI),ZLA(NI))     
+
+  ! ***************************************************************************  
+  CONTAINS
+
+  SUBROUTINE CHECK_BCS
+    
+    IF( LLA(NI) > 1 .AND. LLA(NI) < LC )THEN
+      IF( ANY(LPBN == LLA(NI)) .OR. ANY(LPBS == LLA(NI)) .OR.  &
+          ANY(LPBE == LLA(NI)) .OR. ANY(LPBW == LLA(NI)))   THEN
+        CALL SET_DRIFTER_OUT(XLA2,YLA2,ZLA2)        
+        PRINT '(A36,I6)','OPEN BOUNDARY, DRIFTER IS OUTSIDE:',NI 
+
+      ELSEIF( ANY(LQS == LLA(NI)) .AND. QSUM(LLA(NI),KLA(NI))<0 )THEN
+        CALL SET_DRIFTER_OUT(XLA2,YLA2,ZLA2)
+        PRINT '(A36,I6)','WITHDAWAL CELL, DRIFTER IS OUTSIDE:',NI
+
+      ELSEIF (ANY(IQWRU == IL(LLA(NI))) .AND. ANY(JQWRU == JL(LLA(NI))) .OR. (ANY(IQWRD == IL(LLA(NI))) .AND. ANY(JQWRD == JL(LLA(NI)))) )THEN
+        ! *** PMC - MODIFIED TO HANDLE +/- FLOWS FOR THE W/R BOUNDARY CONDITION
+        DO NWR = 1,NQWR
+          ! *** Handle +/- Flows for Withdrawal/Return Structures
+          NS=NQWRSERQ(NWR)  
+          IF( QWRSERT(NS) >= 0. )THEN
+            ! *** Original Withdrawal/Return
+            IF( IQWRU(NWR) == IL(LLA2) .AND. JQWRU(NWR) == JL(LLA2) .AND. KQWRU(NWR) == KLA(NI) )THEN
+              CALL SET_DRIFTER_OUT(XLA2,YLA2,ZLA2)
+
+              ! ***  RETURN DRIFTER
+              LLA(NI) = LIJ(IQWRD(NWR),JQWRD(NWR))
+              LLA2    = LLA(NI)
+              XLA(NI) = XCOR(LLA2,5)
+              YLA(NI) = YCOR(LLA2,5)
+              ZLA(NI) = BELVLA(NI) + HPLA(NI)*ZZ(LLA2,KQWRD(NWR)) 
+              BEDGEMOVE = .TRUE.
+              EXIT
+            ENDIF
+          ELSE
+            ! *** Reverse Flow Withdrawal/Return
+            IF( IQWRD(NWR) == IL(LLA2) .AND. JQWRD(NWR) == JL(LLA2) .AND. KQWRD(NWR) == KLA(NI) )THEN
+              CALL SET_DRIFTER_OUT(XLA2,YLA2,ZLA2)
+
+              ! ***  RETURN DRIFTER
+              LLA(NI)=LIJ(IQWRU(NWR),JQWRU(NWR))
+              LLA2=LLA(NI)
+              XLA(NI)= XCOR(LLA2,5)
+              YLA(NI)= YCOR(LLA2,5)
+              ZLA(NI)= BELVLA(NI)+HPLA(NI)*ZZ(LLA2,KQWRD(NWR)) 
+              BEDGEMOVE = .TRUE.
+              EXIT
+            ENDIF
+          ENDIF
+        ENDDO
+      
+        IF( LLA(NI) == 1 )THEN
+          PRINT '(A36,I6)','WITHDRAWAL/RETURN, DRIFTER IS OUTSIDE:',NI
+        ENDIF
+      
+      ENDIF
+    
+    ENDIF     ! *** END OF BC TEST
+    
+      
+  END SUBROUTINE
+  
+  SUBROUTINE SET_DRIFTER_OUT(XLA2,YLA2,ZLA2)
+    REAL(RKD) ,INTENT(IN)   :: XLA2,YLA2,ZLA2
+   
+    XLA(NI) = XLA2  
+    YLA(NI) = YLA2  
+    ZLA(NI) = ZLA2  
+    LLA(NI) = 1
+    
+  END SUBROUTINE
+   
+END SUBROUTINE
+
+SUBROUTINE DRIFVELCAL(LNI,KNI,NI,U2NI,V2NI,W2NI)
+
+  ! *** CALCULATING VELOCITY COMPONENTS AT DRIFTER LOCATION BY USING 
+  ! *** INVERSE DISTANCE POWER 2 INTERPOLATION FOR VELOCITY COMPONENTS
+  ! *** AT THE CENTROID OF THE CELLS
+
+  INTEGER,INTENT(IN )    :: LNI,KNI,NI
+  REAL(RKD) ,INTENT(OUT) :: U2NI,V2NI,W2NI
+  
+  INTEGER :: L,LE,LN,K1,K2,KZ1,KZ2,LLREC(9),LL
+  REAL(RKD) :: RAD2,SU1,SU2,SU3,SV1,SV2,SV3,SW1,SW2,SW3,XOUT,YOUT
+  REAL(RKD) :: UTMPB,VTMPB,UTMPB1,VTMPB1,WTMPB,WTMPB1
+  REAL(RKD) :: VELEK,VELNK,VELEK1,VELNK1,ZSIG,DZCTR,DZTOP
+  REAL(RKD) :: UKB,UKT,VKB,VKT,UKB1,UKT1,VKB1,VKT1,VFACTOR,VE,UE
+
+  ! *** ORDER OF CELLS
+  ! ***   1  2  3
+  ! ***   4  5  6
+  ! ***   7  8  9
+  VFACTOR = 0.5
+  SU1=0
+  SU2=0
+  SU3=0
+  SV1=0
+  SV2=0
+  SV3=0
+  SW1=0
+  SW2=0
+  SW3=0
+  LLREC(1) = LNWC(LNI)
+  LLREC(2) = LNC(LNI)
+  LLREC(3) = LNEC(LNI)
+  LLREC(4) = LWC(LNI) 
+  LLREC(5) = LNI
+  LLREC(6) = LEC(LNI) 
+  LLREC(7) = LSWC(LNI)
+  LLREC(8) = LSC(LNI)
+  LLREC(9) = LSEC(LNI)
+      
+  ! *** UPDATE VERTICAL POSITION FOR TOP/BOTTOM LAYERS
+  ZSIG = (ZLA(NI)-BELVLA(NI))/HPLA(NI)
+  ZSIG = MAX(Z(LNI,0),MIN(Z(LNI,KC),ZSIG))
+  ZLA(NI) = ZSIG*HPLA(NI)+BELVLA(NI)
+  IF( ZSIG >= ZZ(LNI,KNI) )THEN
+    K1 = KNI
+    K2 = MIN(KNI+1,KC)
+    KZ1= KNI
+    KZ2= KNI+1
+  ELSE
+    K1 = MAX(KSZ(LNI),KNI-1)
+    K2 = KNI
+    KZ1= KNI-1
+    KZ2= KNI
+  ENDIF
+
+  DO LL=1,9
+    L = LLREC(LL)
+    IF( L >= 2 .AND. L <= LA )THEN
+      LE = LEC(L)
+      LN = LNC(L)
+      
+      ! *** CALCULATING HORIZONTAL VELOCITY COMPONENTS AT CENTROID-BOTTOM
+      !UKB  = 0.5*STCUV(L)*( RSSBCE(L)*U (LE,K1) + RSSBCW(L)*U (L,K1) ) 
+      !UKB1 = 0.5*STCUV(L)*( RSSBCE(L)*U1(LE,K1) + RSSBCW(L)*U1(L,K1) )     
+      !VKB  = 0.5*STCUV(L)*( RSSBCN(L)*V (LN,K1) + RSSBCS(L)*V (L,K1) )     
+      !VKB1 = 0.5*STCUV(L)*( RSSBCN(L)*V1(LN,K1) + RSSBCS(L)*V1(L,K1) )   
+      UKB  = 0.5*STCUV(L)*( RSSBCE(L)*U2(LE,K1) + RSSBCW(L)*U2(L,K1) ) 
+      VKB  = 0.5*STCUV(L)*( RSSBCN(L)*V2(LN,K1) + RSSBCS(L)*V2(L,K1) )     
+
+      ! *** CALCULATING HORIZONTAL VELOCITY COMPONENTS AT CENTROID-TOP
+      !UKT  = 0.5*STCUV(L)*( RSSBCE(L)*U (LE,K2) + RSSBCW(L)*U (L,K2) )       
+      !UKT1 = 0.5*STCUV(L)*( RSSBCE(L)*U1(LE,K2) + RSSBCW(L)*U1(L,K2) )     
+      !VKT  = 0.5*STCUV(L)*( RSSBCN(L)*V (LN,K2) + RSSBCS(L)*V (L,K2) )     
+      !VKT1 = 0.5*STCUV(L)*( RSSBCN(L)*V1(LN,K2) + RSSBCS(L)*V1(L,K2) )   
+      UKT  = 0.5*STCUV(L)*( RSSBCE(L)*U2(LE,K2) + RSSBCW(L)*U2(L,K2) )       
+      VKT  = 0.5*STCUV(L)*( RSSBCN(L)*V2(LN,K2) + RSSBCS(L)*V2(L,K2) )     
+    
+      ! *** RADIUS SQUARED
+      RAD2 = MAX( (XLA(NI)-XCOR(L,5))**2 + (YLA(NI)-YCOR(L,5) )**2,1D-8)
+      
+      DZCTR = ZCTR(L,KZ2)-ZCTR(L,KZ1)
+      IF( DZCTR > 1D-8 )THEN
+        ! *** INTERPOLATION FOR HORIZONTAL VELOCITY COMPONENT
+        !UTMPB  = (UKT -UKB )*(ZSIG-ZCTR(L,KZ1))/DZCTR+UKB
+        !UTMPB1 = (UKT1-UKB1)*(ZSIG-ZCTR(L,KZ1))/DZCTR+UKB1
+        !VTMPB  = (VKT -VKB )*(ZSIG-ZCTR(L,KZ1))/DZCTR+VKB
+        !VTMPB1 = (VKT1-VKB1)*(ZSIG-ZCTR(L,KZ1))/DZCTR+VKB1         
+        UTMPB  = (UKT -UKB )*(ZSIG-ZCTR(L,KZ1))/DZCTR+UKB
+        VTMPB  = (VKT -VKB )*(ZSIG-ZCTR(L,KZ1))/DZCTR+VKB
+      ELSE
+        !UTMPB  = UKT
+        !UTMPB1 = UKT1
+        !VTMPB  = VKT
+        !VTMPB1 = VKT1   
+        UTMPB  = UKT
+        VTMPB  = VKT
+      ENDIF        
+      
+      DZTOP = Z(L,KNI)-Z(L,KNI-1)
+      IF( DZTOP > 1D-8 )THEN
+        ! *** INTERPOLATION FOR VERTICAL VELOCITY COMPONENT
+        !WTMPB  = (W (L,KNI)-W (L,KNI-1))*(ZSIG-Z(L,KNI-1))/DZTOP + W (L,KNI-1)
+        !WTMPB1 = (W1(L,KNI)-W1(L,KNI-1))*(ZSIG-Z(L,KNI-1))/DZTOP + W1(L,KNI-1)  
+        WTMPB  = (W2(L,KNI)-W2(L,KNI-1))*(ZSIG-Z(L,KNI-1))/DZTOP + W2(L,KNI-1)
+      ELSE
+        !WTMPB  = W (L,KNI)
+        !WTMPB1 = W1(L,KNI)
+        WTMPB  = W2(L,KNI)
+      ENDIF
+      
+    ELSE
+      ! *** EDGE CELLS, APPLY A ZERO FACE VELOCITIES
+    
+      ! *** ORDER OF CELLS
+      ! ***   1  2  3
+      ! ***   4  5  6
+      ! ***   7  8  9
+      
+      !UTMPB  = 0.0
+      !UTMPB1 = 0.0
+      !VTMPB  = 0.0
+      !VTMPB1 = 0.0
+      !WTMPB  = 0.0
+      !WTMPB1 = 0.0
+      UTMPB = SLIPFACTOR*U2(LNI,KNI)
+      VTMPB = SLIPFACTOR*V2(LNI,KNI)
+      WTMPB = SLIPFACTOR*W2(LNI,KNI)
+
+      ! *** PMC NOTE - THESE COORDINATES COULD BE CALCULATED ONCE AND SAVED FOR LATER USE
+      IF( LL == 1 )THEN
+        ! *** NORTHWEST 
+        XOUT = XCOR(LNI,5) + ( DYP(LNI)*CVE(LNI) - DXP(LNI)*CUE(LNI) )
+        YOUT = YCOR(LNI,5) + ( DYP(LNI)*CVN(LNI) - DXP(LNI)*CUN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2 + (YLA(NI)-YOUT)**2, 1D-8)
+      ELSEIF( LL == 2 )THEN
+        ! *** NORTH FACE (MOVE WITH DRIFTER)
+        XOUT = XLA(NI) + 0.5*( DYP(LNI)*CVE(LNI) )
+        YOUT = YLA(NI) + 0.5*( DYP(LNI)*CVN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2 + (YLA(NI)-YOUT)**2, 1D-8)
+        !VTMPB  = -VFACTOR*MAX(V(LNI,KNI),0.0)
+        !VTMPB1 = -VFACTOR*MAX(V1(LNI,KNI),0.0)
+        VTMPB = -VFACTOR*MAX(V2(LNI,KNI),0.0)
+      ELSEIF( LL == 3 )THEN
+        ! *** NORTHEAST
+        XOUT = XCOR(LNI,5) + ( DYP(LNI)*CVE(LNI) + DXP(LNI)*CUE(LNI) )
+        YOUT = YCOR(LNI,5) + ( DYP(LNI)*CVN(LNI) + DXP(LNI)*CUN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2 + (YLA(NI)-YOUT)**2, 1D-8)
+      ELSEIF( LL == 4 )THEN
+        ! *** WEST FACE (MOVE WITH DRIFTER)
+        XOUT = XLA(NI) - 0.5*( DXP(LNI)*CUE(LNI) )
+        YOUT = YLA(NI) - 0.5*( DXP(LNI)*CUN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2 + (YLA(NI)-YOUT)**2, 1D-8)
+        !UTMPB  = -VFACTOR*MIN(U(LEC(LNI),KNI),0.0)
+        !UTMPB1 = -VFACTOR*MIN(U1(LEC(LNI),KNI),0.0)
+        UTMPB = -VFACTOR*MIN(U2(LEC(LNI),KNI),0.0)
+      ELSEIF( LL == 6 )THEN
+        ! *** EAST FACE (MOVE WITH DRIFTER)
+        XOUT = XLA(NI) + 0.5*( DXP(LNI)*CUE(LNI) )
+        YOUT = YLA(NI) + 0.5*( DXP(LNI)*CUN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2 + (YLA(NI)-YOUT)**2, 1D-8)
+        !UTMPB  = -VFACTOR*MAX(U(LNI,KNI),0.0)
+        !UTMPB1 = -VFACTOR*MAX(U1(LNI,KNI),0.0)
+        UTMPB = -VFACTOR*MAX(U2(LNI,KNI),0.0)
+      ELSEIF( LL == 7 )THEN
+        ! *** SOUTHWEST 
+        XOUT = XCOR(LNI,5) - ( DYP(LNI)*CVE(LNI) + DXP(LNI)*CUE(LNI) )
+        YOUT = YCOR(LNI,5) - ( DYP(LNI)*CVN(LNI) + DXP(LNI)*CUN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2 + (YLA(NI)-YOUT)**2, 1D-8)
+      ELSEIF( LL == 8 )THEN
+        ! *** SOUTH  (MOVE WITH DRIFTER)
+        !XOUT = XCOR(LNI,5) - ( DYP(LNI)*CVE(LNI) )
+        !YOUT = YCOR(LNI,5) - ( DYP(LNI)*CVN(LNI) )
+        XOUT = XLA(NI) - 0.5*( DYP(LNI)*CVE(LNI) )
+        YOUT = YLA(NI) - 0.5*( DYP(LNI)*CVN(LNI) )
+        RAD2 = MAX((XLA(NI)-XOUT)**2+(YLA(NI)-YOUT)**2,1D-8)
+        !VTMPB  = -VFACTOR*MIN(V(LNC(LNI),KNI),0.0)
+        !VTMPB1 = -VFACTOR*MIN(V1(LNC(LNI),KNI),0.0)
+        VTMPB  = -VFACTOR*MIN(V2(LNC(LNI),KNI),0.0)
+      ELSEIF( LL == 9 )THEN
+        ! *** SOUTHEAST 
+        XOUT = XCOR(LNI,5) - ( DYP(LNI)*CVE(LNI) - DXP(LNI)*CUE(LNI) )
+        YOUT = YCOR(LNI,5) - ( DYP(LNI)*CVN(LNI) - DXP(LNI)*CUN(LNI) )
+        RAD2 = MAX( (XLA(NI)-XOUT)**2+(YLA(NI)-YOUT)**2, 1D-8)
+      ENDIF
+      L = LNI   
+    ENDIF
+
+    ! ** ROTATION   
+    VELEK  = CUE(L)*UTMPB  + CVE(L)*VTMPB  
+    VELNK  = CUN(L)*UTMPB  + CVN(L)*VTMPB  
+    !VELEK1 = CUE(L)*UTMPB1 + CVE(L)*VTMPB1  
+    !VELNK1 = CUN(L)*UTMPB1 + CVN(L)*VTMPB1  
+      
+    ! *** APPLY WEIGHTING
+    !SU1=SU1+VELEK1/RAD2
+    SU2 = SU2 + VELEK/RAD2
+    SU3 = SU3 + 1._8/RAD2
+    !SV1=SV1+VELNK1/RAD2
+    SV2 = SV2 + VELNK/RAD2
+    SV3 = SV3 + 1._8/RAD2
+    !SW1=SW1+WTMPB1/RAD2
+    SW2 = SW2 + WTMPB/RAD2
+    SW3 = SW3 + 1._8/RAD2
+
+  ENDDO
+  
+  !U1NI = SU1/SU3
+  U2NI = SU2/SU3
+  !V1NI = SV1/SV3
+  V2NI = SV2/SV3
+  !W1NI = SW1/SW3
+  W2NI = SW2/SW3
+
+END SUBROUTINE
+
+SUBROUTINE RANDCAL(L,K,NP)   ! ***************************************************************
+  INTEGER,INTENT(IN) :: L,K,NP
+  !REAL(8),EXTERNAL :: DRAND
+  REAL(RKD) :: COEF
+  
+  ! *** HORIZONTAL
+  IF( LA_PRAN == 1 .OR. LA_PRAN == 3 )THEN
+    IF( LA_DIFOP == 0 )THEN
+      COEF = SQRT(2.*AH(L,K)*DELTD)*LA_HORDIF
+    ELSE
+      COEF = DIFFH
+    ENDIF
+    XLA(NP) = XLA(NP) + (2.*DRAND(0)-1.)*COEF
+    YLA(NP) = YLA(NP) + (2.*DRAND(0)-1.)*COEF
+  ENDIF
+  
+  ! *** VERTICAL (IF LA_ZCAL=1 THEN FULLY 3D)
+  IF( LA_PRAN >= 2 .AND. LA_ZCAL == 1 )THEN
+    IF( LA_DIFOP == 0 )THEN
+      COEF = SQRT(2.*AV(L,K)*DELTD)*LA_VERDIF
+    ELSE
+      COEF = DIFFV
+    ENDIF
+    ZLA(NP) = ZLA(NP) + (2*DRAND(0)-1)*COEF
+  ENDIF
+  
+END SUBROUTINE
+
+SUBROUTINE DRIFTERWDEP(LNI,NI,BELVNI,HPNI)   !************************************************
+  !INTERPOLATION OF THE TOTAL WATER DEPTH AND BOTTOM ELEVATION
+  !FOR THE DRIFTER NI AT EACH TIME INSTANT AND EACH LOCATION
+  INTEGER,INTENT(IN) :: LNI,NI
+  REAL(RKD),INTENT(OUT) :: BELVNI,HPNI
+  INTEGER :: L,LLREC(9),LL
+  REAL(RKD) :: BELVNI1,BELVNI2,RAD2,ZETA
+
+  BELVNI1=0
+  BELVNI2=0
+  LLREC(1) = LNWC(LNI)
+  LLREC(2) = LNC(LNI)
+  LLREC(3) = LNEC(LNI)
+  LLREC(4) = LWC(LNI) 
+  LLREC(5) = LNI
+  LLREC(6) = LEC(LNI) 
+  LLREC(7) = LSWC(LNI)
+  LLREC(8) = LSC(LNI)
+  LLREC(9) = LSEC(LNI)
+
+  DO LL=1,9
+    L = LLREC(LL)
+    IF( L >= 2 .AND. L <= LA )THEN
+      RAD2 = MAX((XLA(NI)-XCOR(L,5))**2+(YLA(NI)-YCOR(L,5))**2,1D-8)     
+      BELVNI1=BELVNI1+BELV(L)/RAD2
+      BELVNI2=BELVNI2+1._8/RAD2
+    ENDIF
+  ENDDO
+  BELVNI = BELVNI1/BELVNI2
+  ZETA = HP(LNI)+BELV(LNI)
+  HPNI = MAX(ZETA-BELVNI,HDRY)
+
+END SUBROUTINE
+
+SUBROUTINE DRIFTERLAYER(LNI,BELVNI,HPNI,KLN,ZLN)
+
+  !RECALCULATE ZLA(NI)
+  !DETERMINE KLA(NI)
+  INTEGER,INTENT(IN) :: LNI
+  REAL(RKD), INTENT(IN) :: BELVNI,HPNI
+  INTEGER,INTENT(OUT) :: KLN
+  REAL(RKD), INTENT(INOUT) :: ZLN
+  INTEGER :: K
+  REAL(RKD) :: ZSIG
+  
+  IF( KSZ(LNI) == KC )THEN  ! *** Alberta
+    KLN=KC
+    ZSIG = (ZLN-BELVNI)/HPNI
+    ZSIG = MAX(Z(LNI,0),MIN(Z(LNI,KC),ZSIG))
+    ZLN  = ZSIG*HPNI+BELVNI  !IF ZSIG>1 OR ZSIG<0
+  ELSEIF( LNI >= 2 .AND. KC>1 )THEN
+    ZSIG = (ZLN-BELVNI)/HPNI
+    ZSIG = MAX(Z(LNI,0),MIN(Z(LNI,KC),ZSIG))
+    ZLN  = ZSIG*HPNI+BELVNI                 !IF ZSIG>1 OR ZSIG<0
+    DO K=KSZ(LNI),KC
+      IF( ZSIG  >= Z(LNI,K-1) .AND. ZSIG  <= Z(LNI,K) )THEN
+        KLN = K
+        EXIT
+      ENDIF
+    ENDDO
+  ENDIF
+END SUBROUTINE
+
+SUBROUTINE DIFGRAD(LNI,KNI,NI,DAHX,DAHY,DAVZ)   ! **************************
+
+  ! *** CALCULATING GRADIENT COMPONENTS OF DIFFUSION COEFFICIENT
+  ! *** AT DRIFTER LOCATION BY BAKCWARD SPACE METHOD
+
+  INTEGER,INTENT(IN ) :: LNI,KNI,NI
+  REAL(RKD) ,INTENT(OUT) :: DAHX,DAHY,DAVZ
+  REAL(RKD) :: DAHXC,DAHYC,ZSIG,WEIC,DAVB,DAVT
+    
+  DAHXC = SUB(LNI)*( AH(LNI,KNI) - AH(LWC(LNI),KNI) )/DXU(LNI)
+  DAHYC = SVB(LNI)*( AH(LNI,KNI) - AH(LSC(LNI),KNI) )/DYV(LNI)
+
+  ! ***  HORIZONTAL DIFFUSION COMPONENT (M/S)
+  DAHX = CUE(LNI)*DAHXC + CVE(LNI)*DAHYC
+  DAHY = CUN(LNI)*DAHXC + CVN(LNI)*DAHYC
+  
+  ! *** APPLY A FACTOR TO GET THE HORIZONTAL DIFFUSION COMPONENT (M/S)
+  !DAHX = DAHX*LA_HORDIF
+  !DAHY = DAHY*LA_HORDIF
+  
+  IF( KC <= 2 .OR. LA_ZCAL == 0 )THEN
+    DAVZ = 0.
+  ELSE
+    ! *** AV IS THE VERTICAL DIFFUSION COEFFICIENT AT THE TOP OF THE LAYER
+    ! *** AV(L,KC) = 0 AND AV(L,0) = 0
+    ZSIG = (ZLA(NI)-BELVLA(NI))/HPLA(NI)
+    ZSIG = MAX(Z(LNI,0),MIN(Z(LNI,KC),ZSIG))
+    ZLA(NI)=ZSIG*HPLA(NI)+BELVLA(NI)
+    WEIC = Z(LNI,KC)-(Z(LNI,KNI)-ZSIG)*DZIC(LNI,KNI)  !WEIGHTING COEFFICIENT
+    
+    IF( KNI == KC )THEN
+      DAVT = 0.      
+      DAVB = (AV(LNI,KS)-AV(LNI,KS-1))/HPK(LNI,KNI)  
+    ELSEIF (KNI == 1 )THEN
+      DAVT = (AV(LNI,KNI+1)-AV(LNI,KNI))/HPK(LNI,KNI)
+      DAVB = 0.
+    ELSE
+      DAVT = 2._RKD*(AV(LNI,KNI+1)-AV(LNI,KNI  ))/(DZC(LNI,KNI+1)+DZC(LNI,KNI  ))/HP(LNI)
+      DAVB = 2._RKD*(AV(LNI,KNI  )-AV(LNI,KNI-1))/(DZC(LNI,KNI  )+DZC(LNI,KNI-1))/HP(LNI)
+    ENDIF
+    DAVZ = (DAVT-DAVB)*WEIC + DAVB        
+     
+    ! *** APPLY A VERTICAL GRADIENT FACTOR 
+    DAVZ = DAVZ*LA_VERDIF   
+        
+  ENDIF
+
+END SUBROUTINE
+
+SUBROUTINE OIL_PROC(NP)
+  ! ** CALCULATING  OIL REDUCTION DUE TO:
+  ! ** EVAPORATION AND BIODEGRADATION
+  ! ** OUTPUT: DVOL(NP)
+  INTEGER,INTENT(IN ) :: NP
+  INTEGER :: NG,LNP
+  REAL(RKD) :: DFV,RKA,TK,RGAS,DTHE
+  REAL(RKD) :: HENRY,OILMAS,BIODEG,VWIND,TDEP,TNP
+  DATA RGAS /8.314_RKD/
+
+  ! ** OIL EVAPORATION
+  ! ** BASED ON THE PAPER:
+  ! ** EVAPORATION RATE OF SPILLS OF HYDROCARBONS AND PETROLEUM MIXTURES
+  ! ** BY WARREN STLVER AND DONALD MACKAY
+  ! ** VAPOR PRESSURE IS REFERED FROM: 2013 CRUDE CHARACTERISTICS
+  ! ** MOLAR VOLUME IS REFERED FROM: PhD THESIS BY NA DU
+  !    INVESTIGATION OF HYDROGENATED AND FLUORINATED SURFACTANT
+  !    BASED-SYSTEMS FOR THE DESIGN OF POROUS SILICA MATERIALS
+
+  NG  = LA_GRP(NP)
+  LNP = LLA(NP)
+
+  ! *** LIMIT EVAPORATION, ONLY WHEN DRIFTER IS NEAR SURFACE
+  IF( DLA(NP) < 0.1 .AND. DVAP(NG) > 0. )THEN
+    IF( ICECELL(LNP) )THEN
+      VWIND = 0.001
+    ELSE
+      VWIND = WINDST(LNP)
+      VWIND = MAX(VWIND,0.001)
+    ENDIF
+    RKA = 0.00125_8*VWIND                ! *** MODIFIED MASS TRANSFER COEFFICENT: RKA = 0.00125_8*VWIND [M/S]
+    DTHE = RKA*DARE(NG)*DELTD/DVOL0(NG)  ! *** EVAPORATIVE EXPOSURE FOR A DRIFTER (DIMENSIONLESS)
+    IF( ISTRAN(2) > 0 )THEN
+      TK = TEM(LNP,KC)+273.15
+    ELSE
+      TK = DTEM(NG)+273.15
+    ENDIF
+    HENRY = DVAP(NG)*DVMO(NG)/(RGAS*TK)  ! *** HENRY'S LAW: DIMENSIONLESS, DVMO = 0.000194-0.000293 M3/MOL
+    DFV = HENRY*DTHE                     ! *** STIVER AND MACKAY,         DFV: RATIO OF VAPOR VOLUME AND INITIAL VOLUME
+                                         ! *** 1-Fv = (1-Fm)(RHOo/RHOf)   DFV ASSUMES NO CHANGE IN DENSITY (TO BE UPDATED LATER)
+    DVOL(NP) = DVOL(NP)*(1.-DFV)
+  ENDIF
+  
+  ! *** OIL BIODEGRADATION
+  IF( DARE(NG)>0. )THEN
+    ! *** DETERMINE TEMPERATURE DEPENDENCY
+    IF( ISTRAN(2) > 0 )THEN
+      TNP = TEM(LNP,KLA(NP))-DTEM(NG)
+      TDEP = EXP(-0.01*TNP*TNP)
+    ELSE
+      TDEP=1.0
+    ENDIF
+    BIODEG = EXP(-TDEP*DRAT(NG)*DELTD)                     ! *** FRACTION REMAINING AT END OF TIME STEP
+    OILMAS = DVOL(NP)*DDEN(NG)*BIODEG                      ! *** MASS OF AN OIL DRIFTER IN KG
+    DVOL(NP) = OILMAS/DDEN(NG)                             ! *** DVOL UPDATE
+  ENDIF
+  
+  
+END SUBROUTINE
+
+SUBROUTINE INIT_OIL
+  INTEGER :: NG,NP
+  INTEGER :: NUMD(NGRP) 
+  REAL(RKD)   :: XMAXG,XMING,YMAXG,YMING,RAD
+  REAL(RKD)   :: GARE(NGRP) 
+
+  ! ** CALCULATING SURFACE AREA OF OIL SPILL FOR EACH GROUP
+  GARE = 0  ! TOTAL SURFACE AREA OF OIL FOR EACH GROUP
+  DARE = 0  ! SURFACE AREA OF OIL DRIFTER FOR EACH GROUP
+  NUMD = 0  ! NUMBER OF OIL DRIFTERS FOR EACH GROUP
+  
+  DO NG=1,NGRP
+    IF( ISOILSPI(NG) == 0 ) CYCLE    
+    
+    XMING = MINVAL(XLA,LA_GRP == NG)
+    XMAXG = MAXVAL(XLA,LA_GRP == NG)
+    YMING = MINVAL(YLA,LA_GRP == NG)
+    YMAXG = MAXVAL(YLA,LA_GRP == NG)
+    RAD   = MAX(0.25*(XMAXG-XMING+YMAXG-YMING),1.0)
+    NUMD(NG) = SUM(LA_GRP,LA_GRP == NG)/NG
+    GARE(NG) = PI*RAD**2    
+    DARE(NG) = GARE(NG)/NUMD(NG)
+    DVOL0(NG) = GVOL(NG)/NUMD(NG)
+  ENDDO
+  
+  ! ** OIL: NPD,NGRP,LA_GRP(NP)
+  ALLOCATE(DVOL(NPD))
+  DVOL = 0
+  DO NP=1,NPD
+    IF( ISOILSPI(LA_GRP(NP)) == 0 ) CYCLE
+    DVOL(NP) = DVOL0(LA_GRP(NP))           !INITIAL VOLUME OF A DRIFTER
+    
+  ENDDO
+  
+END SUBROUTINE
+
+END MODULE

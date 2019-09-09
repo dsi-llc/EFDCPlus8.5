@@ -1,0 +1,199 @@
+SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)  
+
+  ! SUBROUTINE CONGRAD SOLVES THE EXTERNAL MODE BY A CONJUGATE GRADIENT SCHEME 
+
+  !----------------------------------------------------------------------!  
+  ! CHANGE RECORD  
+  ! DATE MODIFIED     BY               DESCRIPTION
+  !----------------------------------------------------------------------!
+  ! 2011-03           Paul M. Craig      Rewritten to F90 and added OMP
+
+  USE GLOBAL  
+  USE EFDCOUT
+  
+  IMPLICIT NONE
+  
+  INTEGER, INTENT(IN) :: NOPTIMAL,LDMOPT
+  
+  INTEGER            :: ND, LF, LL, L, LE, LS, LN, LW
+  
+  REAL               :: ALPHA, BETA, RSQ
+  REAL               :: RPCGN, RPCG, PAPCG
+  
+  REAL(RKD), EXTERNAL   :: DSTIME 
+  REAL(RKD)             :: TTDS         ! MODEL TIMING TEMPORARY VARIABLE
+  
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: PCG
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: PN
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: PE
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: PW
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: PS
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: RCG
+  REAL,SAVE,ALLOCATABLE,DIMENSION(:) :: TMPCG  
+  
+  IF(  .NOT. ALLOCATED(PCG) )THEN
+    ALLOCATE(PCG(LCM))  
+    ALLOCATE(PN(LCM))  
+    ALLOCATE(PE(LCM))  
+    ALLOCATE(PW(LCM))  
+    ALLOCATE(PS(LCM))  
+    ALLOCATE(RCG(LCM))  
+    ALLOCATE(TMPCG(LCM))
+    PCG=0.0
+    PN=0.0
+    PE=0.0
+    PW=0.0
+    PS=0.0
+    RCG=0.0
+    TMPCG=0.0 
+  ENDIF
+
+  ! *** START THE TIMING
+  TTDS=DSTIME(0)  
+
+  !$OMP PARALLEL DEFAULT(SHARED)
+  !$OMP DO PRIVATE(ND,L,LF,LL)
+  DO ND=1,NOPTIMAL  
+    LF=2+(ND-1)*LDMOPT  
+    LL=MIN(LF+LDMOPT-1,LA)
+    DO L=LF,LL 
+      PN(L) = P(LNC(L))
+      PE(L) = P(LEC(L))
+      PW(L) = P(LWC(L))
+      PS(L) = P(LSC(L))
+    ENDDO  
+  ENDDO
+  !$OMP END DO
+
+  !$OMP DO PRIVATE(ND,L,LF,LL)
+  DO ND=1,NOPTIMAL  
+    LF=2+(ND-1)*LDMOPT  
+    LL=MIN(LF+LDMOPT-1,LA)
+    DO L=LF,LL 
+      RCG(L) = FPTMP(L) - CCC(L)*P(L) - CCN(L)*PN(L) - CCS(L)*PS(L) - CCW(L)*PW(L) - CCE(L)*PE(L)  
+    ENDDO  
+  ENDDO
+  !$OMP END DO
+  !$OMP END PARALLEL
+  
+  !DIR$ SIMD
+  DO L=2,LA 
+    PCG(L) = RCG(L)*CCCI(L)  
+  ENDDO
+    
+  RPCG=0.  
+  !DIR$ SIMD
+  DO L=2,LA 
+    RPCG = RPCG + RCG(L)*PCG(L)  
+  ENDDO
+
+  IF( RPCG == 0.0 ) RETURN   ! *** DS-INTL SINGLE LINE
+
+  ! *** BEGIN THE ITERATIVE SOLUTION LOOP
+  DO ITER=1,ITERM
+
+    !$OMP PARALLEL DEFAULT(SHARED)
+    !$OMP DO PRIVATE(ND,L,LF,LL,LN,LS,LE,LW)
+    DO ND=1,NOPTIMAL  
+      LF=2+(ND-1)*LDMOPT  
+      LL=MIN(LF+LDMOPT-1,LA)
+      DO L=LF,LL 
+        PN(L) = PCG(LNC(L))
+        PE(L) = PCG(LEC(L))
+        PW(L) = PCG(LWC(L))
+        PS(L) = PCG(LSC(L))
+      ENDDO
+    ENDDO  ! *** END OF DOMAIN
+    !$OMP END DO
+
+    !$OMP DO PRIVATE(ND,L,LF,LL,LN,LS,LE,LW)
+    DO ND=1,NOPTIMAL  
+      LF=2+(ND-1)*LDMOPT  
+      LL=MIN(LF+LDMOPT-1,LA)
+
+      !DIR$ SIMD
+      DO L=LF,LL 
+        APCG(L) = CCC(L)*PCG(L) + CCS(L)*PS(L) + CCN(L)*PN(L) + CCW(L)*PW(L) + CCE(L)*PE(L)  
+      ENDDO  
+    ENDDO  ! *** END OF DOMAIN
+    !$OMP END DO
+    
+    ! *** PULLED OUT OF DOMAIN LOOP TO PREVENT ROUNDOFF ERROR
+    !$OMP SINGLE
+    PAPCG=0.
+    !DIR$ SIMD
+    DO L=2,LA
+      PAPCG = PAPCG + APCG(L)*PCG(L)  
+    ENDDO  
+    ALPHA=RPCG/PAPCG  
+    !$OMP END SINGLE
+    
+    !$OMP DO PRIVATE(ND,L,LF,LL)
+    DO ND=1,NOPTIMAL  
+      LF=2+(ND-1)*LDMOPT  
+      LL=MIN(LF+LDMOPT-1,LA)
+      !DIR$ SIMD
+      DO L=LF,LL 
+        P(L)      = P(L) + ALPHA*PCG(L)
+        RCG(L)    = RCG(L) - ALPHA*APCG(L)  
+        TMPCG(L)  = CCCI(L)*RCG(L)  
+      ENDDO  
+    ENDDO
+    !$OMP END DO
+
+    ! *** PULLED OUT OF DOMAIN LOOP TO PREVENT ROUNDOFF ERROR
+    !$OMP SINGLE
+    RPCGN = 0.
+    RSQ = 0.
+    !DIR$ SIMD
+    DO L=2,LA
+      RPCGN = RPCGN + RCG(L)*TMPCG(L)  
+      RSQ   = RSQ   + RCG(L)*RCG(L)  
+    ENDDO
+    BETA=RPCGN/RPCG  
+    RPCG=RPCGN  
+    !$OMP END SINGLE
+    
+    IF( RSQ > RSQM )THEN
+      ! *** PREPARE THE NEXT ITERATION
+      !$OMP DO PRIVATE(ND,L,LF,LL)
+      DO ND=1,NOPTIMAL  
+        LF=2+(ND-1)*LDMOPT  
+        LL=MIN(LF+LDMOPT-1,LA)
+        !DIR$ SIMD
+        DO L=LF,LL 
+          PCG(L) = TMPCG(L) + BETA*PCG(L)  
+        ENDDO  
+      ENDDO
+      !$OMP END DO
+    ENDIF
+    !$OMP END PARALLEL
+      
+    IF( RSQ <= RSQM )THEN
+      EXIT
+    ENDIF
+  
+  ENDDO  ! *** END OF ITERATION LOOP
+  
+  IF( RSQ > RSQM )THEN
+    OPEN(8,FILE=OUTDIR//'EFDCLOG.OUT',POSITION='APPEND')  
+    WRITE(6,600)  
+    WRITE(8,610)
+    DO L=2,LA  
+      WRITE(8,800)IL(L),JL(L),CCS(L),CCW(L),CCC(L),CCE(L),CCN(L),FPTMP(L)  
+    ENDDO
+    CLOSE(8)
+    CALL EE_LINKAGE(-1)  
+    STOP  
+    600 FORMAT('  MAXIMUM ITERATIONS EXCEEDED IN EXTERNAL SOLUTION')  
+    610 FORMAT('   I    J     CCS     CCW      CCC      CCE      CCN     FPTMP')
+    800 FORMAT(2I6,6E13.4)  
+  ENDIF
+
+  TCONG = TCONG + (DSTIME(0)-TTDS)  
+  IDRYTBP = ITER
+
+  RETURN  
+
+END  
+

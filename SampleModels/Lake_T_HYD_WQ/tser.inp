@@ -1,0 +1,39 @@
+C ** , tser.inp Time Series FILE
+C ** REPEATS NCSER(2) TIMES
+C ** 
+C ** InType  MCSER(NS)  TCCSER(NS)  TACSER(NS)  RMULADJ(NS)  ADDADJ(NS)
+C ** 
+C **  IF InType.EQ.1 THEN READ DEPTH WEIGHTS AND SINGLE VALUE OF Temp
+C **                      ELSE READ A VALUE OF TEMP FOR EACH LAYER
+C **  
+C **  InType=1 Structure
+C **  WKQ(K),K=1,KC
+C **  TCSER(M,NS)    CSER(M,1,NS)          !(MCSER(NS,2) PAIRS FOR NS=1,NCSER(2) SERIES)
+C **
+C **  InType=0 Structure
+C **  TCSER(M,NS)    (CSER(M,K,NS),K=1,KC) !(MCSER(NS) PAIRS)
+C ** 
+          1      22   86400       0       1       0 !  Temp Inflow
+  1.0
+   -21.333   12.6300
+    35.667   10.4900
+    99.792   15.3200
+   159.688   23.0000
+   210.563   29.9600
+   259.500   26.3000
+   287.521   22.4000
+   342.583   15.0100
+   397.500   11.0000
+   418.750   10.5000
+   484.458   11.2600
+   511.333   15.9800
+   539.417   26.5300
+   567.458   28.7200
+   609.396   27.7200
+   622.632   21.7500
+   630.406   22.3300
+   657.563   20.2100
+   692.375   14.4600
+   720.385   12.1500
+   755.385   12.8700
+   785.417   12.5000

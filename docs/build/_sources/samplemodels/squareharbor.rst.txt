@@ -1,0 +1,22 @@
+.. _squareharbor :
+
+
+Square Harbor Test Case 
+=======================
+
+
+A sample model, referred to as the `Square Harbor`, taken from [Bijvelds1999]_ is provided.
+
+The model has 2,782 horizontal grid cells and 10 vertical layers
+
+Information about the model can be found in the following folders.
+
+- ``SquareHarbor\Data``: This folder contains data that can be used with the model. These data can be measured data or output from model or derived from analytical equations.  
+
+- ``SquareHarbor\Model``: EFDC model that can be run.
+
+**Disclaimer**: The model is provided to our users to demonstrate that EFDC_Explorer and EFDC+ can be used to accurately represent models in the literature. The measured data provided in the data folder can be used to compare the U and V components of velocity from the model. The model is running fine with reasonable agreement to measured velocity. 
+
+.. rubric:: References
+
+.. [Bijvelds1999] Bijvelds, M., Kranenburg, C., and Stelling, G. (1999). "3D numerical simulation of turbulent shallow-water flow in square harbor." Journal of Hydraulic Engineering, 125(1), 26-31

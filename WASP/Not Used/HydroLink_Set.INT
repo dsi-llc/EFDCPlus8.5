@@ -1,0 +1,241 @@
+c=======================================================================
+      interface
+      subroutine hlsetdebug(hl_debug)
+         !ms$attributes c,dllimport,alias:'__hlsetdebug'::hlsetdebug
+         Integer hl_debug
+         !ms$attributes reference :: hl_debug
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlgetlasterror(message)
+         !ms$attributes c,dllimport,alias:
+     %'__hlgetlasterror'::hlgetlasterror
+         character*(*) message
+         !ms$attributes reference :: message
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlopen(FName, hl_mode, hl_handle, ierror)
+         !ms$attributes c,dllimport,alias:'__hlopen'::hlopen
+	 character*(*) Fname
+	 Integer hl_mode, hl_handle, ierror
+         !ms$attributes reference :: FName, hl_mode, hl_handle, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetlanguage(hl_handle, hl_language, ierror)
+         !ms$attributes c,dllimport,alias:
+     $'__hlsetlanguage'::hlsetlanguage
+	 Integer hl_handle, hl_language, ierror
+         !ms$attributes reference :: hl_handle, hl_language, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetcreator(hl_handle, hl_creator, ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetcreator'::hlsetcreator
+	 Integer hl_handle, hl_creator, ierror
+        !ms$attributes reference :: hl_handle, hl_creator, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hladddescription(hl_handle, id, string, ierror)
+         !ms$attributes c,dllimport,alias:
+     $'__hladddescription'::hladddescription
+	 Integer hl_handle, id, ierror
+	 character *(*) string
+        !ms$attributes reference :: hl_handle, id, string, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetseedmoment(hl_handle, month, day, year, hour,
+     &minute,second,ierror)
+         !ms$attributes c,dllimport,
+     &alias:'__hlsetseedmoment'::hlsetseedmoment
+         Integer hl_handle, month, day, year, hour, minute,
+     &second,ierror
+        !ms$attributes reference :: hl_handle, month, day, year, hour,
+     &minute,second,ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetnumsegments(hl_handle, numsegs, ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetnumsegments'::hlsetnumsegments
+	 Integer hl_handle, numsegs, ierror
+        !ms$attributes reference :: hl_handle, numsegs,ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetsegname(hl_handle,index, segname, ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetsegname'::hlsetsegname
+	 Integer hl_handle, index, ierror
+	 Character *(*) segname
+        !ms$attributes reference :: hl_handle, index, segname,ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetnumflowpaths(hl_handle,numfp, ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetnumflowpaths'::hlsetnumflowpaths
+	 Integer hl_handle, numfp, ierror
+        !ms$attributes reference :: hl_handle, numfp, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetnumsegconsts(hl_handle,numsc, ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetnumsegconsts'::hlsetnumsegconsts
+	 Integer hl_handle, numsc, ierror
+        !ms$attributes reference :: hl_handle, numsc, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetnumfpconsts(hl_handle,numfpc, ierror)
+         !ms$attributes c,dllimport,alias:
+     &'__hlsetnumfpconsts'::hlsetnumfpconsts
+	 Integer hl_handle, numfpc, ierror
+        !ms$attributes reference :: hl_handle, numfpc, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetsegconsttype(hl_handle,sc_index, sc_type,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetsegconsttype'::hlsetsegconsttype
+	 Integer hl_handle, sc_index, sc_type, ierror
+        !ms$attributes reference :: hl_handle, sc_index,
+     &sc_type, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetfpconsttype(hl_handle,fp_index, fp_type,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetfpconsttype'::hlsetfpconsttype
+	 Integer hl_handle, fp_index, fp_type, ierror
+        !ms$attributes reference :: hl_handle, fp_index,
+     %fp_type, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetvartimestep(hl_handle,vardt,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetvartimestep'::hlsetvartimestep
+	 Integer hl_handle, vardt, ierror
+        !ms$attributes reference :: hl_handle,vardt, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsethydtimestep(hl_handle,timestep,ierror)
+         !ms$attributes c,dllimport,alias:
+     &'__hlsethydtimestep'::hlsethydtimestep
+	 Integer hl_handle, ierror
+	 Real timestep
+        !ms$attributes reference :: hl_handle,timestep, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetupdateint(hl_handle,updateinterval,ierror)
+         !ms$attributes c,dllimport,alias:
+     &'__hlsetupdateint'::hlsetupdateint
+	 Integer hl_handle, ierror
+	 Real updateinterval
+        !ms$attributes reference :: hl_handle,updateinterval, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsethydtowaspratio(hl_handle,iratio,ierror)
+         !ms$attributes c,dllimport,alias:
+     &'__hlsethydtowaspratio'::hlsethydtowaspratio
+	 Integer hl_handle, iratio, ierror
+        !ms$attributes reference :: hl_handle,iratio, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetnumlayers(hl_handle,numlayers,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetnumlayers'::hlsetnumlayers
+	 Integer hl_handle, numlayers, ierror
+        !ms$attributes reference :: hl_handle,numlayers, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetflowpath(hl_handle,flow_index,from_seg,
+     &to_seg,direction,ierror)
+         !ms$attributes c,dllimport,alias:
+     &'__hlsetflowpath'::hlsetflowpath
+         Integer hl_handle, flow_index,from_seg, to_seg,
+     &direction,ierror
+        !ms$attributes reference :: hl_handle,flow_index,from_seg,
+     &to_seg,direction,ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetflowinfo(hl_handle,index,value,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsetflowinfo'::hlsetflowinfo
+	 Integer hl_handle, index, ierror
+         Real value(31000)
+        !ms$attributes reference :: hl_handle,index, value, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsetseginfo(hl_handle,index,value,ierror)
+         !ms$attributes c,dllimport,alias:
+     &'__hlsetseginfo'::hlsetseginfo
+	 Integer hl_handle, index, ierror
+         Real value(12000)
+        !ms$attributes reference :: hl_handle,index, value, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlsettimestep(hl_handle,value,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlsettimestep'::hlsettimestep
+	 Integer hl_handle, ierror
+	 Real value
+        !ms$attributes reference :: hl_handle,value, ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlmomentcomplete(hl_handle,ierror)
+         !ms$attributes c,dllimport,alias:
+     %'__hlmomentcomplete'::hlmomentcomplete
+	 Integer hl_handle, ierror
+        !ms$attributes reference :: hl_handle,ierror
+      end subroutine
+      end interface
+c=======================================================================
+      interface
+      subroutine hlclose(hl_handle,ierror)
+         !ms$attributes c,dllimport,alias:'__hlclose'::hlclose
+	 Integer hl_handle, ierror
+	 Real value
+        !ms$attributes reference :: hl_handle,ierror
+      end subroutine
+      end interface
+c=======================================================================
+

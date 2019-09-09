@@ -1,0 +1,9 @@
+------------------------------------------------------------------------------
+C91B OPTIONS FOR NETCDF OUTPUT
+*
+*  ISNCDF(I)      OPTION FOR OUTPUT, I=1:12
+*                 = 0: NO
+*                 = 1: YES
+*
+*         1       2       3       4       5       6       7      8        9      10      11      12
+C91B    SAL     TEM     DYE     SLF     TOX     SED     SND     WQL     LPT     SHR     WIN     WAV

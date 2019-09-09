@@ -1,0 +1,7 @@
+C **  EFDC_WASPHYDRO.CMN  
+C **  file renamed by A Stoddard 3/27/2008 to prevent confusion with EFDC_DS efdc.cmn
+      COMMON/WASPHYDRO/  IHL_HANDLE,ibegin,idays,ad,adcoeff,abwmax
+     $                   abwmx                                                !HNR
+       CHARACTER(80) ::   errstring
+       integer  ok
+       

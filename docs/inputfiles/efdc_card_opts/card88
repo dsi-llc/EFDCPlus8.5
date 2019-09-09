@@ -1,0 +1,7 @@
+------------------------------------------------------------------------------
+C88  High frequency output for specific locations and times
+*
+* HFREOUT:  1 use high frequency dates for output
+*           0 specific output option is not used
+*
+C88 HFREOUT

@@ -1,0 +1,12 @@
+------------------------------------------------------------------------------
+C21 PERIODIC FORCING (TIDAL) SURF ELEV OR PRESSURE ON NORTH OPEN BOUNDARIES
+*
+*  IPBN: SEE CARD 18
+*  JPBN:
+*  ISPBN:
+*  NPFORN:
+*  NPSERN:
+*  TPCOORDN: 
+*  GRPID: ID NUMBER OF BOUNDARY GROUP
+*
+C21    IPBN    JPBN   ISPBN  NPFORN  NPSERN      GRPID ! ID

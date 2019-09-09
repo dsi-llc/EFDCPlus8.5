@@ -1,0 +1,8 @@
+SET KMP_AFFINITY=granularity=fine,compact,1,0
+
+TITLE Sample Title of the Problem
+
+CD "C:\Path\To\WorkingDirectory\"
+
+"C:\Path\To\Exectuable\EFDCPlus.exe" -NT2 -NOP
+

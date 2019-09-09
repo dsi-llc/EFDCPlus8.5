@@ -1,0 +1,104 @@
+SUBROUTINE MORPHJ
+  
+  ! ORIGINAL:  May 24, 2006
+  !  Craig Jones and Scott James
+  ! REVISED: SIGMA-ZED AND OMP - 2016-11-07
+  !  Paul M. Craig
+  !
+  !***************************************************************
+
+  USE GLOBAL
+  USE RESTART_MODULE
+
+  IMPLICIT NONE
+
+  DOUBLE PRECISION :: TMPVAL,BEDTHICK
+  INTEGER :: ITMP,K,L,ND,NS,NT,LF,LL,LP
+  DOUBLE PRECISION,SAVE,ALLOCATABLE,DIMENSION(:) :: DELBED 
+  
+  IF(  .NOT. ALLOCATED(DELBED) )THEN
+    ALLOCATE(DELBED(LCM)) 
+    DELBED=0.0
+  ENDIF
+
+  !$OMP PARALLEL DEFAULT(SHARED)
+  !$OMP DO PRIVATE(ND,LF,LL,K,LP,L,BEDTHICK)
+  DO ND=1,NDM  
+    LF=(ND-1)*LDMWET+1  
+    LL=MIN(LF+LDMWET-1,LAWET)
+    DO LP=LF,LL  
+      L=LWET(LP)  
+      ! *** Current bed thickness BEDTHICK
+      BEDTHICK=0.0
+      DO K=1,KB
+        BEDTHICK = BEDTHICK + 0.01*(TSED(K,L)/BULKDENS(K,L))
+      END DO
+      DELBED(L) = BEDTHICK - HBEDA(L)  ! *** Change in bed thickness DELBED
+      BELV1(L) = BELV(L)  
+      HTMP(L) = HP(L)  
+      H1P(L) = HP(L)  
+      P1(L) = P(L)
+    
+      ! *** Layer Thickness HBED
+      HBEDA(L) = BEDTHICK
+      DO K=1,KB
+        HBED(L,K) = 0.01*TSED(K,L)/BULKDENS(K,L)
+      ENDDO
+      BELV(L) = BELV(L) - DELBED(L)
+      HP(L)   = HP(L)   + DELBED(L) 
+    ENDDO
+  ENDDO
+  !$OMP END DO
+  
+  !$OMP DO PRIVATE(ND,LF,LL,K,LP,L,BEDTHICK)
+  DO ND=1,NDM  
+    LF=(ND-1)*LDMWET+1  
+    LL=MIN(LF+LDMWET-1,LAWET)
+    DO LP=LF,LL  
+      L=LWET(LP)  
+      HPI(L)=1.0/HP(L)  
+      QMORPH(L) = DELTI*DXYP(L)*(HP(L)-H1P(L))  
+    ENDDO
+  ENDDO
+  !$OMP END DO
+  !$OMP END PARALLEL
+
+  ITMP=0  
+  DO L=2,LA  
+     IF( HP(L) <= 0.0 )THEN  
+        IF( ABS(H1P(L)) >= HWET )THEN  
+           ITMP=1  
+           OPEN(8,FILE=OUTDIR//'EFDCLOG.OUT',POSITION='APPEND')  
+           WRITE(8,"('NEG DEPTH DUE TO MORPH CHANGE', 2I5,12F13.5)")IL(L),JL(L),HBED1(L,KBT(L)),HBED(L,KBT(L)),BELV1(L),BELV(L),ZELBEDA(L),DELBED(L),HBEDA(L)  
+           WRITE(8,"('NEG DEPTH DUE TO MORPH CHANGE', 3I6,12F13.5)")L,KBT(L),NCORENO(IL(L),JL(L)),(HBED(L,K),K=1,KBT(L)),HTMP(L),HP(L)
+           CLOSE(8)
+        ELSE  
+           HP(L)=0.9*HDRY  
+        ENDIF
+     ENDIF
+  ENDDO
+  
+  IF( ITMP == 1 )THEN  
+     CALL RESTOUT(1)  
+     IF( NDRYSTP<0 )THEN
+        OPEN(1,FILE=OUTDIR//'DRYLOSS.OUT')
+        CLOSE(1,STATUS='DELETE')
+        OPEN(1,FILE=OUTDIR//'DRYLOSS.OUT')
+        DO L=2,LA
+           IF( VDWASTE(L)>0.0 )THEN
+              TMPVAL=VDWASTE(L)/DXYP(L)
+              WRITE(1,'(2I6,4E14.6)')IL(L),JL(L),VDWASTE(L),TMPVAL,QDWASTE(L)
+           ENDIF
+        ENDDO
+        CLOSE(1)
+     ENDIF
+     STOP '*** S_MORPH: => DRYLOSS.OUT'
+  ENDIF
+  
+  ! *** PMC CHANGED 2016-12
+  ! *** ADJUSTMENT OF CONCENTRATIONS OF TRANSPORT VARIABLES IN RESPONSE TO  
+  ! *** CHANGE IN BED MORPHOLOGY HAS BEEN ELIMATED HERE AND NOW USES THE
+  ! *** EFDC STANDARD MORPHOLOGY CONCENTRATION ADJUSTMENT IN SSEDTOX
+  RETURN
+  
+END SUBROUTINE MORPHJ

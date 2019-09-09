@@ -1,0 +1,9 @@
+------------------------------------------------------------------------------
+C91A OPTIONS FOR NETCDF OUTPUT
+*
+*  TYPE       File creation option
+*               =1:  Single file
+*               =0:  Multiple daily files
+*  BEGIN             Start julian day of writing netcdf file
+*  END               End julian day of writing netcdf file
+C91A   TYPE   BEGIN     END

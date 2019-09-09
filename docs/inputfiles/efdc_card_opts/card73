@@ -1,0 +1,14 @@
+------------------------------------------------------------------------------
+C73  CONTROLS FOR HORIZONTAL PLANE RESIDUAL VELOCITY VECTOR PLOTTING
+*
+*  ISVPH:    NOT USED
+*            NOT USED
+*  NPVPH:    NOT USED
+*  ISRVPH: 1 TO WRITE FILE FOR RESIDUAL VELOCITY PLOTTING IN
+*            HORIZONTAL PLANE
+*  IVPHXY:   NOT USED
+*            NOT USED
+*            NOT USED
+*            NOT USED
+*
+C73   ISVPH   NPVPH  ISRVPH  IVPHXY

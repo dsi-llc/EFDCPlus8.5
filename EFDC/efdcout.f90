@@ -1,0 +1,2050 @@
+MODULE EFDCOUT
+USE IFPORT
+USE GLOBAL
+
+IMPLICIT NONE
+
+! *** DO NOT CHANGE THESE PRECISIONS AS THEY ARE LINKED TO EFDC_EXPLORER
+REAL(RKD),PRIVATE,SAVE :: EETIME
+
+INTEGER(IK4),PRIVATE,SAVE :: NSXD,NBCCELLS,NCELLLIST
+INTEGER(IK4),PRIVATE,SAVE :: IWQ(40)
+INTEGER(IK4),PRIVATE,SAVE :: NSEDSTEPS, NBEDSTEPS, NWQVAR
+INTEGER(IK4),PRIVATE,SAVE,ALLOCATABLE,DIMENSION(:) :: BCCELLS
+CHARACTER(30) :: FILENAME
+
+CONTAINS
+
+SUBROUTINE EE_LINKAGE(JSEXPLORER)
+  !------------------------------------------------------------------------
+  ! **  SUBROUTINE EE_LINKAGE (OLD EEXPOUT.FOR) WRITES BINARY OUTPUT FILES:
+  ! **    EE_HYD    - WATER DEPTH AND VELOCITY
+  ! **    EE_WC     - WATER COLUMN AND TOP LAYER OF SEDIMENTS
+  ! **    EE_BC     - EFDC COMPUTED BOUNDARY FLOWS
+  ! **    EE_BED    - SEDIMENT BED LAYER INFORMATION
+  ! **    EE_WQ     - WATER QUALITY INFORMATION FOR THE WATER COLUMN
+  ! **    EE_SD     - SEDIMENT DIAGENSIS INFORMATION
+  ! **    EE_RPEM   - ROOTED PLANT AND EPIPHYTE MODEL
+  ! **    EE_ARRAYS - GENERAL/USER DEFINED ARRAY DUMP. LINKED TO  
+  ! **                EFDC_EXPLORER FOR DISPLAY
+  ! **    EE_SEDZLJ - SEDIMENT BED DATA FOR SEDZLJ SUB-MODEL
+  !------------------------------------------------------------------------ 
+  INTEGER(IK4),INTENT(IN) :: JSEXPLORER
+  
+  IF( ISDYNSTP == 0 )THEN  
+    DELT=DT  
+  ELSE  
+    DELT=DTDYN  
+  ENDIF  
+   
+  IF( JSEXPLORER == 1 )THEN
+    CALL HEADEROUT    
+  ELSEIF( JSEXPLORER == -1 )THEN
+    ! *** FORCE ALL OUTPUT
+    NSEDSTEPS=32000
+    NBEDSTEPS=32000   
+  ENDIF
+
+  ! *** SET TIME EE LINKAGE FILES
+  EETIME = DBLE(DT)*DFLOAT(N)+DBLE(TCON)*DBLE(TBEGIN)
+  EETIME = EETIME/86400._8
+
+  CALL WSOUT
+  CALL VELOUT
+  CALL BCOUT
+  
+  IF( ISSPH(8) >= 1 ) CALL WCOUT
+  IF( LSEDZLJ )THEN
+    CALL SEDZLJOUT
+  ELSE
+    IF( ISBEXP >= 1 .AND. KB > 1 )THEN
+      IF( ISTRAN(6) >= 1 .OR. ISTRAN(7) >= 1 ) CALL BEDOUT
+    ENDIF
+  ENDIF
+  IF( ISTRAN(8) > 0 )THEN
+    CALL WQOUT
+    IF( IWQBEN > 0 .AND. ISSDBIN /= 0 ) CALL SDOUT(JSEXPLORER)
+    IF( ISRPEM > 0) CALL RPEMOUT(JSEXPLORER)
+  ENDIF
+  IF( ISINWV == 2 .AND. JSEXPLORER /= 1 ) CALL ARRAYSOUT
+  
+END SUBROUTINE
+
+SUBROUTINE HEADEROUT
+  INTEGER(IK4) :: NACTIVE,VER,HSIZE,BSIZE,I,NS,MW,NW,L,K,ITYPE,ITIMEVAR,LL,CELL3D
+  CHARACTER(8) :: ARRAYNAME
+  
+  NACTIVE = LA-1
+  
+  ! *** NUMBER OF 3D CELLS
+  CELL3D = 0
+  DO L=2,LA
+    CELL3D = CELL3D + (KC - KSZ(L) + 1)
+  ENDDO
+  
+  ! *** WATER DEPTHS
+  FILENAME=OUTDIR//'EE_WS.OUT'
+  VER   = 8400
+  HSIZE = 6*4
+  BSIZE = (2 + 3 + NACTIVE)*4
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+  CLOSE(95,STATUS='DELETE')
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+  WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4)
+  WRITE(95) INT(IC,4),INT(JC,4),INT(NACTIVE,4)
+  CLOSE(95,STATUS='KEEP')
+  
+  ! *** VELOCITY
+  FILENAME=OUTDIR//'EE_VEL.OUT'
+  VER   = 8400
+  HSIZE = (9 + 4*LCM)*4
+  BSIZE = (2 + 2 + 3*CELL3D)*4
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+  CLOSE(95,STATUS='DELETE')
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+  WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4),INT(IGRIDV,4),INT(CELL3D,4)
+  WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(NACTIVE,4)
+  WRITE(95) REAL(RSSBCE,4)
+  WRITE(95) REAL(RSSBCW,4)
+  WRITE(95) REAL(RSSBCS,4)
+  WRITE(95) REAL(RSSBCN,4)
+  CLOSE(95,STATUS='KEEP')
+  
+  IF( ISSPH(8) >= 1 )THEN
+    ! *** WATER COLUMN AND TOP LAYER OF SEDIMENT
+    FILENAME=OUTDIR//'EE_WC.OUT'
+    NSXD=NSED+NSND
+    VER=8400
+    HSIZE = (28 + NSXD)*4    
+    BSIZE = BLOCKWC(CELL3D)
+  
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+    CLOSE(95,STATUS='DELETE')
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+    WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4),INT(IGRIDV,4),INT(CELL3D,4)
+    WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(KB,4),INT(NACTIVE,4)
+    WRITE(95) (INT(ISTRAN(I),4),I=1,7)
+    WRITE(95) INT(NSED,4),INT(NSND,4),INT(NTOX,4)
+    WRITE(95) INT(ISWAVE,4),INT(ISBEDSTR,4),LOGICAL(LSEDZLJ,4),INT(ISBDLDBC,4),REAL(TBEDIT,4)
+    WRITE(95) INT(IEVAP,4),INT(ISGWIE,4),INT(ISICE,4)    
+    DO NS=1,NSXD
+      WRITE(95) REAL(SEDDIA(NS),4)
+    ENDDO
+    CLOSE(95,STATUS='KEEP')
+  ENDIF
+
+  ! *** SEDFLUME MODEL RESULTS
+  IF( LSEDZLJ )THEN
+    ! *** SEDIMENT BED 
+    FILENAME=OUTDIR//'EE_SEDZLJ.OUT'
+    VER=8401
+    HSIZE = 22*4                    
+    BSIZE = BLOCKSEDZLJ(CELL3D)
+    
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+    CLOSE(95,STATUS='DELETE')
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+    WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4),INT(IGRIDV,4),INT(CELL3D,4)
+    WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(KB,4),INT(NACTIVE,4)
+    WRITE(95) (INT(ISTRAN(I),4),I=1,7)
+    WRITE(95) INT(NSCM,4),INT(ITBM,4),INT(NSICM,4),INT(NTOX,4),INT(NCALC_BL,4)
+    CLOSE(95,STATUS='KEEP')
+  ELSE
+    ! *** SEDIMENT BED LAYERS FOR ORIGINAL SEDIMENT TRANSPORT APPROACH
+    IF( ISBEXP >= 1 .AND. KB > 1 )THEN
+      IF( ISTRAN(6) >= 1 .OR. ISTRAN(7) >= 1 )THEN
+        FILENAME=OUTDIR//'EE_BED.OUT'
+        VER=8400
+        HSIZE = (18 + NSXD)*4    
+        BSIZE = BLOCKBED(CELL3D)
+        
+        OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+        CLOSE(95,STATUS='DELETE')
+        OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+        WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4)
+        WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(KB,4),INT(NACTIVE,4)
+        WRITE(95) (INT(ISTRAN(I),4),I=1,7)
+        WRITE(95) INT(NSED,4),INT(NSND,4),INT(NTOX,4)
+
+        DO NS=1,NSXD
+          WRITE(95)REAL(SEDDIA(NS),4)
+        ENDDO
+        CLOSE(95,STATUS='KEEP')
+        NBEDSTEPS=ISBEXP-1
+      ENDIF
+    ENDIF
+  ENDIF
+  
+  ! *** WATER QUALITY MODEL (HEM3D) RESULTS
+  IF( ISTRAN(8) > 0 )THEN
+    FILENAME=OUTDIR//'EE_WQ.OUT'
+    
+    NWQVAR=NWQV
+    IF( IDNOTRVA > 0 ) NWQVAR = NWQVAR+1   ! *** Macroalgae always needs to be the last WQ variable since it is not advected
+    
+    IWQ = 0
+    BSIZE = 0
+	
+    DO NW=1,NWQVAR
+      IWQ(NW) = ISTRWQ(NW)
+      IF (IWQ(NW) > 0) BSIZE = BSIZE + 1
+    ENDDO
+    
+    IF( IDNOTRVA > 0 ) THEN
+      IWQ(NWQVAR)=1
+      BSIZE = BSIZE + 1
+    ENDIF
+	
+    VER=8400
+    HSIZE = (11 + NWQVAR)*4    
+    BSIZE = (2 + BSIZE*CELL3D)*4
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+    CLOSE(95,STATUS='DELETE')
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+    WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4),INT(IGRIDV,4),INT(CELL3D,4)
+    WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(KB,4),INT(NACTIVE,4)
+    WRITE(95) INT(NWQVAR,4)
+    WRITE(95) (INT(IWQ(NW),4),NW=1,NWQVAR)
+    CLOSE(95,STATUS='KEEP')
+
+    ! *** SAVE SEDIMENT DIAGENESIS RESULTS
+    IF( ISSDBIN /= 0 )THEN
+      FILENAME=OUTDIR//'EE_SD.OUT'
+      VER=8400
+      HSIZE = 8*4           
+      BSIZE = (2 + (6*3 + 21)*NACTIVE)*4
+      OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+      CLOSE(95,STATUS='DELETE')
+      OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+      WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4)
+      WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(KB,4),INT(NACTIVE,4)
+      CLOSE(95,STATUS='KEEP')
+      NSEDSTEPS=-1
+    ENDIF
+      
+    IF( ISRPEM > 0 )THEN
+      FILENAME=OUTDIR//'EE_RPEM.OUT'
+      VER = 8400
+      HSIZE = (10 + NACTIVE)*4       
+      BSIZE = 0
+      DO L=2,LA
+        IF( LMASKRPEM(L) .OR. INITRPEM == 0 )THEN                                                                                               
+          BSIZE = BSIZE + 1
+        ENDIF
+      ENDDO
+      BSIZE = (2 + 4*BSIZE)*4
+      
+      OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+      CLOSE(95,STATUS='DELETE')
+      OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+      WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4)
+      WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(KB,4),INT(NACTIVE,4)
+      WRITE(95) INT(NRPEM,4),INT(INITRPEM,4)
+      WRITE(95) (LOGICAL(LMASKRPEM(L),4),L=2,LA)
+      CLOSE(95,STATUS='KEEP')
+    ENDIF
+      
+  ENDIF
+
+  ! *** BC OUTPUT: QSUM
+  FILENAME=OUTDIR//'EE_BC.OUT'
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+  CLOSE(95,STATUS='DELETE')
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+
+  ! *** ONLY OUTPUT CELLS THAT HAVE BC'S
+  IF( KC > 1 )THEN
+    NBCCELLS = NBCS + NBCSOP
+    NBCCELLS = NBCCELLS+LA                                   ! *** EVAP/RAINFALL/ICE
+    IF( NGWSER > 0 .OR. ISGWIT /= 0 )NBCCELLS = NBCCELLS+LA  ! *** GROUNDWATER
+    ALLOCATE(BCCELLS(NBCCELLS))
+    
+    ! *** BUILD CELL LIST FOR SELECTIVE QSUM
+    NCELLLIST = 0
+    ! *** BC CELLS
+    DO LL=1,NBCS
+      NCELLLIST = NCELLLIST+1
+      BCCELLS(NCELLLIST) = LBCS(LL)
+    ENDDO
+
+    ! *** OPEN BC CELLS
+    DO LL=1,NBCSOP
+      NCELLLIST = NCELLLIST+1
+      BCCELLS(NCELLLIST) = LOBCS(LL)
+    ENDDO
+  ELSE
+    ! *** SINGLE LAYER
+    NBCCELLS = LA
+    NCELLLIST = 0
+    ALLOCATE(BCCELLS(1))
+  ENDIF
+  VER   = 8400
+  HSIZE = (20 + NCELLLIST + NBCS + NPBS + NPBW + NPBE + NPBN)*4
+  BSIZE = BLOCKBC(CELL3D)
+  WRITE(95) INT(VER,4),INT(HSIZE,4),INT(BSIZE,4)
+  WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),INT(NACTIVE,4)
+  WRITE(95) INT(NBCS,4),INT(NBCCELLS,4),INT(NCELLLIST,4)
+  WRITE(95) (INT(BCCELLS(L),4),L=1,NCELLLIST)
+  WRITE(95) INT(NPBS,4),INT(NPBW,4),INT(NPBE,4),INT(NPBN,4)
+  WRITE(95) INT(NQCTL,4),INT(NQWR,4),INT(NQCTLSER,4),INT(NQCRULES,4)
+  WRITE(95) INT(NGWSER,4),INT(ISGWIT,4)
+  WRITE(95) (INT(LBCS(L),4),L=1,NBCS)
+  WRITE(95) (INT(LPBS(L),4),L=1,NPBS)
+  WRITE(95) (INT(LPBW(L),4),L=1,NPBW)
+  WRITE(95) (INT(LPBE(L),4),L=1,NPBE)
+  WRITE(95) (INT(LPBN(L),4),L=1,NPBN)
+  CLOSE(95,STATUS='KEEP')
+  
+  IF( ISINWV == 2 )THEN
+    FILENAME=OUTDIR//'EE_ARRAYS.OUT'
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+    CLOSE(95,STATUS='DELETE')
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+    
+    ! *** EE LINKAGE VERSION
+    VER=7300
+    WRITE(95) INT(VER,4)
+    
+    ! # OF TIME VARYING ARRAYS
+    NS = 4 + 4    ! 13
+    IF( ISHDMF >= 1 ) NS = NS+4  ! NOTE: THIS IS ONLY NEEDED AS LONG AS FMDUX AND FMDUY ARE BEING USED
+    WRITE(95) INT(NS,4)
+    
+    ! FLAGS: ARRAY TYPE, TIME VARIABLE
+    ! ARRAY TYPE:    0 = L            DIM'D
+    !                1 = L,KC         DIM'D
+    !                2 = L,0:KC       DIM'D
+    !                3 = L,KB         DIM'D
+    !                4 = L,KC,NCLASS  DIM'D
+    ! TIME VARIABLE: 0 = NOT CHANGING
+    !                1 = TIME VARYING
+
+    ! *****************************************************************
+    ! *** THE FOLLOWING ARRAYS ARE TIME INVARIANT SO ONLY WRITTEN ONCE
+    ! *****************************************************************
+    ITIMEVAR = 0
+    ITYPE = 0
+
+    WRITE(95) INT(ITYPE,4),INT(ITIMEVAR,4)
+    ARRAYNAME='SBX'
+    WRITE(95) ARRAYNAME
+    DO L=2,LA
+      WRITE(95) REAL(SBXO(L),4)
+    ENDDO
+
+    WRITE(95) INT(ITYPE,4),INT(ITIMEVAR,4)
+    ARRAYNAME='SBY'
+    WRITE(95) ARRAYNAME
+    DO L=2,LA
+      WRITE(95) REAL(SBYO(L),4)
+    ENDDO
+
+    WRITE(95) INT(ITYPE,4),INT(ITIMEVAR,4)
+    ARRAYNAME='SDX'
+    WRITE(95) ARRAYNAME
+    DO L=2,LA
+      WRITE(95) REAL(SDX(L),4)
+    ENDDO
+
+    WRITE(95) INT(ITYPE,4),INT(ITIMEVAR,4)
+    ARRAYNAME='SDY'
+    WRITE(95) ARRAYNAME
+    DO L=2,LA
+      WRITE(95) REAL(SDY(L),4)
+    ENDDO
+
+    ITYPE = 1
+    WRITE(95) INT(ITYPE,4),INT(ITIMEVAR,4)
+    ARRAYNAME='DZC'
+    WRITE(95) ARRAYNAME
+    DO K=1,KC
+      DO L=2,LA
+        WRITE(95)REAL(DZC(L,K),4)
+      ENDDO
+    ENDDO
+
+    CLOSE(95,STATUS='KEEP')
+
+  ENDIF
+END SUBROUTINE
+
+SUBROUTINE WSOUT
+
+  ! ** OUTPUT WATER DEPTH
+  INTEGER(IK4) :: VER,HSIZE,BSIZE
+  INTEGER(IK4) :: L,ITMP,LTMP,NN,NS,ISTAT
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP
+  REAL(RKD)    :: PTIME
+
+  FILENAME=OUTDIR//'EE_WS.OUT'
+  IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_WS == 0 )THEN
+    RSTFIRST_WS=1
+    WRITE(*,'(A)')'READING TO STARTING TIME FOR WS'
+    FSIZE = FILESIZE(FILENAME)
+    OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY') 
+    READ(95) VER,HSIZE,BSIZE
+    IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+    OFFSET = HSIZE + 4
+    
+    NS = 0
+    DO WHILE(OFFSET < FSIZE)
+      ISTAT = FSEEK(95,OFFSET,0)
+
+      IF( EOF(95) )THEN
+        WRITE(95) INT(N+NRESTART,4),EETIME,REAL(DELT,4),INT(LMINSTEP,4)
+        EXIT
+      ENDIF
+      IF( ISTAT /= 0 ) EXIT
+        
+      READ(95) PTIME
+      
+      IF( DEBUG )THEN
+        NS=NS+1
+        IF( NS == 8 )THEN
+          WRITE(*,'(F10.3)')PTIME
+          NS=0
+        ELSE
+          WRITE(*,'(F10.3,\)')PTIME
+        ENDIF
+      ENDIF
+      IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+      OFFSET = OFFSET + BSIZE
+    ENDDO
+    IF( DEBUG ) WRITE(*,'(" ")')
+    WRITE(*,'(A)')'FINSIHED READING WS'
+    
+    ISTAT = FSEEK(95,8,1)
+    
+  ELSE
+    OPEN(95,FILE=FILENAME,POSITION='APPEND',STATUS='OLD',FORM='BINARY')
+    WRITE(95) INT(N+NRESTART,4),EETIME,REAL(DELT,4),INT(LMINSTEP,4)
+  ENDIF
+  
+  IF( ISRESTI == 0 .OR. ICONTINUE == 0) NRESTART=0  
+  WRITE(95) (REAL(HP(L),4), L=2,LA)
+
+  FLUSH(95)
+  CLOSE(95,STATUS='KEEP')
+  
+END SUBROUTINE
+
+SUBROUTINE VELOUT
+
+  ! ** WATER DEPTH AND VELOCITY OUTPUT
+  INTEGER(IK4) :: VER,HSIZE,BSIZE
+  INTEGER(IK4) :: L,K,ITMP,NN,NS,ISTAT
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP
+  REAL(RKD)    :: PTIME
+
+  FILENAME=OUTDIR//'EE_VEL.OUT'
+  IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_VEL == 0 )THEN
+    RSTFIRST_VEL=1   
+    WRITE(*,'(A)')'READING TO STARTING TIME FOR VEL'
+    FSIZE = FILESIZE(FILENAME)
+    OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY') 
+    READ(95) VER,HSIZE,BSIZE
+    IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+    OFFSET = HSIZE + 4
+    
+    NS = 0
+    DO WHILE(OFFSET < FSIZE)
+      ISTAT = FSEEK(95,OFFSET,0)
+
+      IF( EOF(95) )THEN
+        WRITE(95) INT(N+NRESTART,4),EETIME,REAL(DELT,4)
+        EXIT
+      ENDIF
+      IF( ISTAT /= 0 ) EXIT
+        
+      READ(95) PTIME
+      
+      IF( DEBUG )THEN
+        NS=NS+1
+        IF( NS == 8 )THEN
+          WRITE(*,'(F10.3)')PTIME
+          NS=0
+        ELSE
+          WRITE(*,'(F10.3,\)')PTIME
+        ENDIF
+      ENDIF
+      IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+      OFFSET = OFFSET + BSIZE
+    ENDDO   
+    IF( DEBUG ) WRITE(*,'(" ")')
+    WRITE(*,'(A)')'FINISHED READING VEL'
+
+    ISTAT = FSEEK(95,4,1)
+    
+  ELSE
+    OPEN(95,FILE=FILENAME,POSITION='APPEND',STATUS='OLD',FORM='BINARY')
+    WRITE(95) INT(N+NRESTART,4),EETIME,REAL(DELT,4)
+  ENDIF
+  
+  IF( ISRESTI == 0 .OR. ICONTINUE == 0) NRESTART=0 
+  
+  WRITE(95) ((REAL(U(L,K),4), K=KSZ(L),KC), L=2,LA)
+  WRITE(95) ((REAL(V(L,K),4), K=KSZ(L),KC), L=2,LA)
+  WRITE(95) ((REAL(W(L,K),4), K=KSZ(L),KC), L=2,LA)  
+  FLUSH(95)
+  CLOSE(95,STATUS='KEEP')
+  
+END SUBROUTINE
+
+SUBROUTINE WCOUT
+
+  ! ** WATER COLUMN OF CONSTITUENTS OUTPUT
+  INTEGER(IK4) :: VER,I,ITMP,NSED4,NSND4,NTOX4
+  INTEGER(IK4) :: NS,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: L,K,ISYS,NT,NX
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP,SHEAR
+  REAL(RKD)    :: PTIME
+  LOGICAL      :: LTMP
+  
+  FILENAME=OUTDIR//'EE_WC.OUT'
+  IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_WC == 0 )THEN
+    RSTFIRST_WC=1
+    WRITE(*,'(A)')'READING TO STARTING TIME FOR WC'
+    FSIZE = FILESIZE(FILENAME)
+    OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')     
+    READ(95) VER,HSIZE,BSIZE
+    IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+    OFFSET = HSIZE
+      
+    NS = 0
+    DO WHILE(OFFSET < FSIZE)
+      ISTAT = FSEEK(95,OFFSET,0)
+
+      IF( EOF(95) )THEN
+        WRITE(95) EETIME
+        EXIT
+      ENDIF
+      IF( ISTAT /= 0 ) EXIT
+        
+      READ(95) PTIME
+      
+      IF( DEBUG )THEN
+        NS=NS+1
+        IF( NS == 8 )THEN
+          WRITE(*,'(F10.3)')PTIME
+          NS=0
+        ELSE
+          WRITE(*,'(F10.3,\)')PTIME
+        ENDIF
+      ENDIF
+      IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+      OFFSET = OFFSET + BSIZE
+    ENDDO
+    IF( DEBUG ) WRITE(*,'(" ")')
+    WRITE(*,'(A)')'FINISHED READING WC'
+    
+  ELSE
+    OPEN(95,FILE=FILENAME,STATUS='OLD',POSITION='APPEND',FORM='BINARY')
+    WRITE(95) EETIME
+  ENDIF
+  
+  ! *** WRITE THE TOP LAYER INDEX
+  IF( ISTRAN(6) > 0 .OR. ISTRAN(7) > 0 )THEN
+      WRITE(95) (INT(KBT(L),4), L=2,LA)
+  ENDIF
+    
+  ! *** WRITE THE WATER COLUMN AND TOP LAYER OF SEDIMENT DATA, IF NEEDED
+  IF( ISTRAN(6) > 0 .OR. ISTRAN(7) > 0 )THEN
+      IF( LSEDZLJ )THEN
+        ! *** TAU(LCM) Shear Stress in dynes/cm^2,  WATERDENS  gm/cm3
+        ! *** SHEAR IS SAVED AS N/M^2 (Pascals) normalized to water density  (M2/S2)
+        DO L=2,LA
+          SHEAR = TAU(L) * 0.1 / (WATERDENS*1000.)
+          WRITE(95) SHEAR
+        ENDDO
+      ELSEIF( ISBEDSTR >= 1 )THEN
+        WRITE(95) (REAL(TAUBSED(L),4), L=2,LA)
+        IF( ISBEDSTR == 1 )THEN
+          WRITE(95) (REAL(TAUBSND(L),4), L=2,LA)
+        ENDIF
+      ELSE
+        ! *** TOTAL BED SHEAR STRESS
+        WRITE(95) (REAL(TAUB(L),4), L=2,LA)
+      ENDIF
+  ELSE
+      ! *** TOTAL BED SHEAR STRESS
+      DO L=2,LA  
+        SHEAR=MAX(QQ(L,0),QQMIN)/CTURB2
+        WRITE(95) SHEAR
+      ENDDO
+  ENDIF
+  
+  IF( ISWAVE >= 1 )THEN
+      WRITE(95) (REAL(QQWV3(L),4), L=2,LA)  ! *** Bed Shear due to Waves Only
+      ! *** Shear due to Current Only
+      DO L=2,LA  
+        SHEAR = ( RSSBCE(L)*TBX(LEC(L)) + RSSBCW(L)*TBX(L) )**2  + ( RSSBCN(L)*TBY(LNC(L)) + RSSBCS(L)*TBY(L) )**2  
+        SHEAR = 0.5*SQRT(SHEAR)  
+        WRITE(95) SHEAR             ! *** Bed Shear due to Current Only
+      ENDDO
+      IF( ISWAVE >= 3 )THEN
+        WRITE(95) (REAL(WV(L).HEIGHT,4), L=2,LA)
+        WRITE(95) (REAL(WV(L).FREQ,4), L=2,LA)
+        WRITE(95) (REAL(WV(L).DIR,4), L=2,LA)
+        IF( ISWAVE == 4 )THEN
+          WRITE(95) (REAL(WV(L).DISSIPA(KC),4), L=2,LA)  ! *** DISSIPATION
+          WRITE(95) (REAL(WVHUU(L,KC),4), L=2,LA)   ! *** SXX (M3/S2)
+          WRITE(95) (REAL(WVHVV(L,KC),4), L=2,LA)   ! *** SYY (M3/S2)
+          WRITE(95) (REAL(WVHUV(L,KC),4), L=2,LA)   ! *** SXY (M3/S2)
+        ENDIF
+      ENDIF
+  ENDIF
+  
+  IF( ISTRAN(1) >= 1 ) WRITE(95) ((REAL(SAL(L,K),4), K=KSZ(L),KC), L=2,LA)
+  IF( ISTRAN(2) >= 1 )THEN
+      WRITE(95) ((REAL(TEM(L,K),4), K=KSZ(L),KC), L=2,LA)
+      IF( TBEDIT > 0.) WRITE(95) (REAL(TEMB(L),4), L=2,LA)
+      IF( IEVAP > 1 )THEN
+        WRITE(95) (REAL(EVAPT(L),4), L=2,LA)
+        WRITE(95) (REAL(RAINT(L),4), L=2,LA)
+      ENDIF
+  ENDIF
+  
+  IF( ISTRAN(3) >= 1 ) WRITE(95,ERR=999,IOSTAT=ISYS) ((REAL(DYE(L,K),4), K=KSZ(L),KC), L=2,LA)
+  IF( ISTRAN(4) >= 1 ) WRITE(95) ((REAL(SFL(L,K),4), K=KSZ(L),KC), L=2,LA)
+  IF( ISTRAN(5) >= 1 )THEN
+      WRITE(95) ((REAL(TOXB(L,KBT(L),NT),4), L=2,LA), NT=1,NTOX)
+      WRITE(95) (((REAL(TOX(L,K,NT),4), K=KSZ(L),KC), L=2,LA), NT=1,NTOX)
+  ENDIF
+  
+  IF( ISTRAN(6) >= 1 .OR. ISTRAN(7) >= 1 )THEN
+      WRITE(95) (REAL(BELV(L),4), L=2,LA)
+      WRITE(95) (REAL(HBED(L,KBT(L)),4), L=2,LA)
+      WRITE(95) (REAL(BDENBED(L,KBT(L)),4), L=2,LA)
+      WRITE(95) (REAL(PORBED(L,KBT(L)),4), L=2,LA)
+      IF( ISTRAN(6) >= 1 ) WRITE(95) ((REAL(SEDB(L,KBT(L),NS),4), L=2,LA), NS=1,NSED)
+      IF( ISTRAN(7) >= 1 ) WRITE(95) ((REAL(SNDB(L,KBT(L),NX),4), L=2,LA), NX=1,NSND)
+      WRITE(95) ((REAL(VFRBED(L,KBT(L),NS),4), L=2,LA), NS=1,NSED+NSND)
+      IF( ISTRAN(6) >= 1 ) WRITE(95) (((REAL(SED(L,K,NS),4), K=KSZ(L),KC), L=2,LA), NS=1,NSED)
+      IF( ISTRAN(7) >= 1 )THEN
+        WRITE(95) (((REAL(SND(L,K,NX),4), K=KSZ(L),KC), L=2,LA), NX=1,NSND)
+        IF( ISBDLDBC > 0 .AND. NSND > 0 )THEN
+            ! *** CALCULATE EQUIVALENT CONCENTRATIONS
+            WRITE(95) ((REAL(QSBDLDX(L,NX),4), L=2,LA), NX=1,NSND)
+            WRITE(95) ((REAL(QSBDLDY(L,NX),4), L=2,LA), NX=1,NSND)
+        ENDIF
+      ENDIF
+  ENDIF
+  
+  IF( ISGWIE > 0 )THEN
+      WRITE(95) (REAL(EVAPSW(L),4), L=2,LA)
+      WRITE(95) (REAL(EVAPGW(L),4), L=2,LA)
+      WRITE(95) (REAL(QGW(L),4), L=2,LA)
+      WRITE(95) (REAL(AGWELV(L),4), L=2,LA)
+  ENDIF
+  
+  IF( ISTRAN(2) > 0 .AND. ISICE  >= 3 )THEN
+      WRITE(95) (REAL(ICETHICK(L),4), L=2,LA)
+      WRITE(95) (REAL(ICETEMP(L),4), L=2,LA)
+  ENDIF
+  
+  FLUSH(95)
+  CLOSE(95,STATUS='KEEP')
+  
+  RETURN
+  
+999 STOP ' Error writing SNAPSHOT file'
+        
+END SUBROUTINE
+
+INTEGER FUNCTION BLOCKWC(CELL3D)
+    INTEGER:: DSIZE, CELL2D, CELL3D
+    CELL2D = LA - 1
+
+    DSIZE = 2 !**EETIME
+    IF( ISTRAN(6) > 0 .OR. ISTRAN(7) > 0 )THEN
+      DSIZE = DSIZE + CELL2D                      ! TOP LAYER
+    ENDIF
+    
+    ! *** READ THE WATER COLUMN AND TOP LAYER OF SEDIMENT DATA, IF NEEDED
+    IF( ISTRAN(6) > 0 .OR. ISTRAN(7) > 0 )THEN
+        IF( LSEDZLJ )THEN
+          DSIZE = DSIZE + CELL2D                  ! SHEAR
+        ELSEIF( ISBEDSTR >= 1 )THEN
+          DSIZE = DSIZE + CELL2D                  ! TAUBSED
+          IF( ISBEDSTR == 1 )THEN
+            DSIZE = DSIZE + CELL2D                ! TAUBSND
+          ENDIF
+        ELSE
+          ! *** TOTAL BED SHEAR STRESS
+          DSIZE = DSIZE + CELL2D                  ! TAUB
+        ENDIF
+    ELSE
+        ! *** TOTAL BED SHEAR STRESS
+        DSIZE = DSIZE + CELL2D                    ! SHEAR
+    ENDIF
+    IF( ISWAVE >= 1 )THEN
+        DSIZE = DSIZE + 2*CELL2D                  ! QQWV3, SHEAR
+        IF( ISWAVE >= 3 )THEN
+          DSIZE = DSIZE + 3*CELL2D                ! WV(L).HEIGHT, WV.FREQ, WACCWE
+          IF( ISWAVE == 4 )THEN
+            DSIZE = DSIZE + 4*CELL2D              ! WV.DISSIPA, WVHUU, WVHVV, WVHUV
+          ENDIF
+        ENDIF
+    ENDIF
+    IF( ISTRAN(1) >= 1 ) DSIZE = DSIZE + CELL3D   ! SAL
+    IF( ISTRAN(2) >= 1 )THEN
+        DSIZE = DSIZE + CELL3D                    ! TEM
+        IF( TBEDIT > 0.) DSIZE = DSIZE + CELL2D   ! TEMB
+        IF( IEVAP > 1 )THEN
+          DSIZE = DSIZE + 2 * CELL2D              ! EVAPT, RAINT
+        ENDIF
+    ENDIF
+    IF( ISTRAN(3) >= 1 ) DSIZE = DSIZE + CELL3D   ! DYE
+    IF( ISTRAN(4) >= 1 ) DSIZE = DSIZE + CELL3D   ! SFL
+    IF( ISTRAN(5) >= 1 )THEN
+        DSIZE = DSIZE + NTOX*CELL2D               ! TOXB
+        DSIZE = DSIZE + NTOX*CELL3D               ! TOX
+    ENDIF
+    IF( ISTRAN(6) >= 1 .OR. ISTRAN(7) >= 1 )THEN
+        DSIZE = DSIZE + 4*CELL2D                  ! BELV, HBED, BDENBED, PORBED
+        IF( ISTRAN(6) == 1 )THEN
+          DSIZE = DSIZE + 2*NSED*CELL2D           ! SEDB, VFRBED
+          DSIZE = DSIZE + NSED*CELL3D             ! SED
+        ENDIF
+        IF( ISTRAN(7) >= 1 )THEN
+          DSIZE = DSIZE + 2*NSND*CELL2D           ! SNDB, VFRBED
+          DSIZE = DSIZE + NSND*CELL3D             ! SND
+          IF( ISBDLDBC > 0 .AND. NSND > 0 )THEN
+            DSIZE = DSIZE + 2*NSND*CELL2D         ! QSBDLDX, QSBDLDY
+          ENDIF
+        ENDIF
+    ENDIF
+    ! ** NEW BLOCK
+    IF( ISGWIE > 0 )THEN
+        DSIZE = DSIZE + 4*CELL2D                  ! EVAPSW, EVAPGW, QGW, AGWELV
+    ENDIF
+    IF(  ISTRAN(2) >= 1  .AND. ISICE  >= 3 )THEN
+        DSIZE = DSIZE + 2*CELL2D                  ! ICETHICK, ICETEMP
+    ENDIF
+    BLOCKWC = 4*DSIZE                             ! SINGLE DATA
+END FUNCTION 
+
+SUBROUTINE SEDZLJOUT
+
+  INTEGER(IK4) :: VER,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: L,NS,NT,K,ITMP
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP,SURFACE
+  REAL(RKD)    :: PTIME
+
+  FILENAME=OUTDIR//'EE_SEDZLJ.OUT'
+  IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_SEDZLJ == 0 )THEN
+    RSTFIRST_SEDZLJ=1
+    WRITE(*,'(A)')'READING TO STARTING TIME FOR SEDZLJ'
+    FSIZE = FILESIZE(FILENAME)
+    OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')     
+    READ(95) VER,HSIZE,BSIZE
+    IF(VER /= 8401) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+    OFFSET = HSIZE 
+    
+    NS = 0
+    DO WHILE(OFFSET < FSIZE)
+      ISTAT = FSEEK(95,OFFSET,0)
+
+      IF( EOF(95) )THEN
+        WRITE(95) EETIME
+        EXIT
+      ENDIF
+      IF( ISTAT /= 0 ) EXIT
+        
+      READ(95) PTIME
+      
+      IF( DEBUG )THEN
+        NS=NS+1
+        IF( NS == 8 )THEN
+          WRITE(*,'(F10.3)')PTIME
+          NS=0
+        ELSE
+          WRITE(*,'(F10.3,\)')PTIME
+        ENDIF
+      ENDIF
+      IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+      OFFSET = OFFSET + BSIZE
+    ENDDO
+    IF( DEBUG ) WRITE(*,'(" ")')
+    WRITE(*,'(A)')'FINISHED READING SEDZLJ'
+    
+  ELSE
+    OPEN(95,FILE=FILENAME,STATUS='OLD',POSITION='APPEND',FORM='BINARY')
+    WRITE(95) EETIME
+  ENDIF
+  IF( DTSED == 0. ) DTSED = DT
+  
+  ! *** INTEGER*4
+  WRITE(95) ((INT(LAYERACTIVE(K,L),4), K=1,KB), L=2,LA)    ! *** LAYERACTIVE(KB,LCM) - This is = 1 when a bed layer (KB index) exists with mass
+
+  ! *** REAL*4
+  WRITE(95) (REAL(TAU(L),4), L=2,LA)                       ! *** TAU(LCM)      - Shear Stress in dynes/cm^2
+  WRITE(95) ((REAL(TSED(K,L),4), K=1,KB), L=2,LA)          ! *** TSED(KB,LCM)  - This is the mass in g/cm^2 in each layer
+  WRITE(95) ((REAL(BULKDENS(K,L),4), K=1,KB), L=2,LA)      ! *** BULKDENS(KB,LCM) - Dry Bulk density of each layer (g/cm^3)
+  WRITE(95) (((REAL(PERSED(NS,K,L),4), K=1,KB), L=2,LA), NS=1,NSCM)   ! *** PERSED(NSCM,KB,LCM) - This is the mass percentage of each size class in a layer
+  WRITE(95) (REAL(D50AVG(L),4), L=2,LA)                    ! *** D50AVG(LCM)   - Average particle size of bed surface (microns)
+  
+  WRITE(95) (REAL(ETOTO(L),4), L=2,LA)                     ! *** ETOTO(LCM)    - Total erosion rate in the cell g/cm^2/s
+  WRITE(95) (REAL(DEPO(L),4), L=2,LA)                      ! *** DEPO(LCM)     - Total deposition rate in the cell g/cm^2/s
+  
+  IF( NCALC_BL > 0 )THEN
+    WRITE(95) ((REAL(CBL(L,NS)*10000.,4), L=2,LA), NS=1,NSCM)   ! *** Bedload mass inb g/m^2 for each size class
+    WRITE(95) ((REAL(QSBDLDX(L,NS),4), L=2,LA), NS=1,NSCM)      ! *** Bedload flux in X direction (g/s)
+    WRITE(95) ((REAL(QSBDLDY(L,NS),4), L=2,LA), NS=1,NSCM)      ! *** Bedload flux in Y direction (g/s)
+  ENDIF
+
+  IF( ISTRAN(5) > 0 )THEN
+    DO NT=1,NTOX
+      DO L=2,LA
+        DO K=1,KB
+          IF( K < 3 .AND. TSED(K,L) > 0. )THEN
+            TMP = 0.01*TSED(K,L)/BULKDENS(K,L)             ! *** HBED(L,K)
+            TMP = TMP/HBED(L,KBT(L))
+            TMP = TMP*TOXB(L,KBT(L),NT)
+            WRITE(95) TMP
+          ELSEIF( TSED(K,L) > 0. )THEN
+            WRITE(95) REAL(TOXB(L,K,NT),4)
+          ELSE
+            WRITE(95) 0.0_4
+          ENDIF
+        ENDDO
+      ENDDO
+    ENDDO
+
+    IF( NCALC_BL > 0 )THEN
+      WRITE(95) ((REAL(CBLTOX(L,NT),4), L=2,LA), NT=1,NTOX)    ! *** Bedload toxic concentration (mg/m^2)
+    ENDIF
+  ENDIF
+            
+  FLUSH(95)
+  CLOSE(95,STATUS='KEEP')
+  
+END SUBROUTINE
+
+INTEGER FUNCTION BLOCKSEDZLJ(CELL3D)
+    INTEGER:: DSIZE, CELL2D, CELL3D
+    
+    CELL2D = LA - 1
+    DSIZE = 2                             ! *** EETIME
+    
+    ! *** INTEGER*4
+    DSIZE = DSIZE + KB*CELL2D             ! *** LAYERACTIVE
+    
+    ! *** REAL*4
+    DSIZE = DSIZE + 4*CELL2D              ! *** TAU,D50AVG,ETOTO,DEP
+    DSIZE = DSIZE + 2*KB*CELL2D           ! *** TSED,BULKDENS
+    DSIZE = DSIZE + KB*NSCM*CELL2D        ! *** PERSED
+    IF( NCALC_BL > 0 )THEN
+      DSIZE = DSIZE + 3*NSCM*CELL2D       ! *** CBL,QSBDLDX,QSBDLDY
+    ENDIF
+    IF( ISTRAN(5) >= 1 )THEN
+      DSIZE = DSIZE + NTOX*KB*CELL2D      ! *** TOXB
+      IF(  NCALC_BL > 0 )THEN
+        DSIZE = DSIZE + NTOX*CELL2D       ! *** CBLTOX
+      ENDIF        
+    ENDIF
+    BLOCKSEDZLJ = 4*DSIZE                 ! *** CONVERT TO BYTES
+END FUNCTION
+  
+SUBROUTINE BEDOUT
+
+  INTEGER(IK4) :: VER,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: I,NS,L,K,NX,NT,ITMP
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP
+  REAL(RKD)    :: PTIME
+
+  ! *** SEDIMENT BED LAYERS  
+  NBEDSTEPS=NBEDSTEPS+1
+  IF( NBEDSTEPS >= ISBEXP )THEN
+    FILENAME=OUTDIR//'EE_BED.OUT'
+    IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_BED == 0 )THEN
+      RSTFIRST_BED=1
+      WRITE(*,'(A)')'READING TO STARTING TIME FOR BED'
+      FSIZE = FILESIZE(FILENAME)
+      OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')     
+      READ(95) VER,HSIZE,BSIZE
+      IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+      OFFSET = HSIZE 
+    
+      NS = 0
+      DO WHILE(OFFSET < FSIZE)
+        ISTAT = FSEEK(95,OFFSET,0)
+
+        IF( EOF(95) )THEN
+          WRITE(95) EETIME
+          EXIT
+        ENDIF
+        IF( ISTAT /= 0 ) EXIT
+        
+        READ(95) PTIME
+      
+        IF( DEBUG )THEN
+          NS=NS+1
+          IF( NS == 8 )THEN
+            WRITE(*,'(F10.3)')PTIME
+            NS=0
+          ELSE
+            WRITE(*,'(F10.3,\)')PTIME
+          ENDIF
+        ENDIF
+        IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+        OFFSET = OFFSET + BSIZE
+      ENDDO
+      IF( DEBUG ) WRITE(*,'(" ")')
+      WRITE(*,'(A)')'FINISHED READING BED'
+        
+    ELSE
+      OPEN(95,FILE=FILENAME,STATUS='OLD',POSITION='APPEND',FORM='BINARY')
+      WRITE(95) EETIME
+    ENDIF
+    
+    WRITE(95) (INT(KBT(L),4), L=2,LA)
+    WRITE(95) ((REAL(HBED(L,K),4), K=1,KB), L=2,LA)
+    WRITE(95) ((REAL(BDENBED(L,K),4), K=1,KB), L=2,LA)
+    WRITE(95) ((REAL(PORBED(L,K),4), K=1,KB), L=2,LA)
+    IF( ISTRAN(6) >= 1 )THEN
+      DO NS=1,NSED
+        WRITE(95) ((REAL(SEDB(L,K,NS),4), K=1,KB), L=2,LA)
+      ENDDO
+    ENDIF
+    IF( ISTRAN(7) >= 1 )THEN
+      DO NX=1,NSND
+        NS=NSED+NX
+        WRITE(95) ((REAL(SNDB(L,K,NX),4), K=1,KB), L=2,LA)
+      ENDDO
+    ENDIF
+    IF( ISTRAN(5) >= 1 )THEN
+      DO NT=1,NTOX
+        WRITE(95) ((REAL(TOXB(L,K,NT),4), K=1,KB), L=2,LA)
+      ENDDO
+    ENDIF
+    FLUSH(95)
+    CLOSE(95,STATUS='KEEP')
+    NBEDSTEPS=0
+  ENDIF
+  
+END SUBROUTINE
+
+INTEGER FUNCTION BLOCKBED(CELL3D)
+    INTEGER:: DSIZE, CELL2D, CELL3D
+    CELL2D = LA - 1
+    DSIZE = 2 !**EETIME
+    DSIZE = DSIZE + CELL2D
+    DSIZE = DSIZE + 3*KB*CELL2D
+    IF( ISTRAN(6) >= 1 )THEN
+      DSIZE = DSIZE + NSED*KB*CELL2D
+    ENDIF
+    IF( ISTRAN(7) >= 1 )THEN
+      DSIZE = DSIZE + NSND*KB*CELL2D
+    ENDIF
+    IF( ISTRAN(5) >= 1 )THEN
+      DSIZE = DSIZE + NTOX*KB*CELL2D
+    ENDIF
+    BLOCKBED = 4*DSIZE
+END FUNCTION
+  
+SUBROUTINE SDOUT(JSEXPLORER)
+
+  INTEGER(IK4) :: VER,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: L,K,JSEXPLORER,ITMP,NS
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP
+  REAL(RKD)    :: PTIME
+ 
+  NSEDSTEPS=NSEDSTEPS+1
+  IF( NSEDSTEPS >= ABS(ISSDBIN) .OR. JSEXPLORER == 1 )THEN
+    FILENAME=OUTDIR//'EE_SD.OUT'
+    IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_SD == 0 )THEN
+      RSTFIRST_SD=1
+      WRITE(*,'(A)')'READING TO STARTING TIME FOR SD'
+      FSIZE = FILESIZE(FILENAME)
+      OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')     
+      READ(95) VER,HSIZE,BSIZE
+      IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+      OFFSET = HSIZE
+    
+      NS = 0
+      DO WHILE(OFFSET < FSIZE)
+        ISTAT = FSEEK(95,OFFSET,0)
+
+        IF( EOF(95) )THEN
+          WRITE(95) EETIME
+          EXIT
+        ENDIF
+        IF( ISTAT /= 0 ) EXIT
+        
+        READ(95) PTIME
+      
+        IF( DEBUG )THEN
+          NS=NS+1
+          IF( NS == 8 )THEN
+            WRITE(*,'(F10.3)')PTIME
+            NS=0
+          ELSE
+            WRITE(*,'(F10.3,\)')PTIME
+          ENDIF
+        ENDIF
+        IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+        OFFSET = OFFSET + BSIZE
+      ENDDO
+      IF( DEBUG ) WRITE(*,'(" ")')
+      WRITE(*,'(A)')'FINISHED READING SD'
+      
+    ELSE
+      OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',POSITION='APPEND',FORM='BINARY')
+      WRITE(95) EETIME
+    ENDIF
+      
+    WRITE(95) ((REAL(SMPON(L,K),4), L=2,LA), K=1,3)
+    WRITE(95) ((REAL(SMPOP(L,K),4), L=2,LA), K=1,3)
+    WRITE(95) ((REAL(SMPOC(L,K),4), L=2,LA), K=1,3)
+    WRITE(95) ((REAL(SMDFN(L,K),4), L=2,LA), K=1,3)
+    WRITE(95) ((REAL(SMDFP(L,K),4), L=2,LA), K=1,3)
+    WRITE(95) ((REAL(SMDFC(L,K),4), L=2,LA), K=1,3)
+    WRITE(95) (REAL(SM1NH4(L),4), L=2,LA)
+    WRITE(95) (REAL(SM2NH4(L),4), L=2,LA)
+    WRITE(95) (REAL(SM1NO3(L),4), L=2,LA)
+    WRITE(95) (REAL(SM2NO3(L),4), L=2,LA)
+    WRITE(95) (REAL(SM1PO4(L),4), L=2,LA)
+    WRITE(95) (REAL(SM2PO4(L),4), L=2,LA)
+    WRITE(95) (REAL(SM1H2S(L),4), L=2,LA)
+    WRITE(95) (REAL(SM2H2S(L),4), L=2,LA)
+    WRITE(95) (REAL(SM1SI(L),4), L=2,LA)
+    WRITE(95) (REAL(SM2SI(L),4), L=2,LA)
+    WRITE(95) (REAL(SMPSI(L),4), L=2,LA)
+    WRITE(95) (REAL(SMBST(L),4), L=2,LA)
+    WRITE(95) (REAL(SMT(L),4), L=2,LA)
+    WRITE(95) (REAL(SMCSOD(L),4), L=2,LA)
+    WRITE(95) (REAL(SMNSOD(L),4), L=2,LA)
+    WRITE(95) (REAL(WQBFNH4(L),4), L=2,LA)
+    WRITE(95) (REAL(WQBFNO3(L),4), L=2,LA)
+    WRITE(95) (REAL(WQBFO2(L),4), L=2,LA)
+    WRITE(95) (REAL(WQBFCOD(L),4), L=2,LA)
+    WRITE(95) (REAL(WQBFPO4D(L),4), L=2,LA)
+    WRITE(95) (REAL(WQBFSAD(L),4), L=2,LA)
+
+    FLUSH(95)
+    CLOSE(95,STATUS='KEEP')
+    NSEDSTEPS=0
+  ENDIF
+END SUBROUTINE
+
+SUBROUTINE RPEMOUT(JSEXPLORER)
+
+  INTEGER(IK4) :: VER,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: L,JSEXPLORER,NS,ITMP
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP
+  REAL(RKD)    :: PTIME
+  LOGICAL(4)   :: LMASK
+  
+  ! *** RPEM
+  IF( ISRPEM > 0 )THEN
+    ! *** IF JSEXPLORER=1 THEN WRITE THE ARRAYS (I.E. IC'S)
+    NRPEMSTEPS=NRPEMSTEPS+1
+
+    IF( NRPEMSTEPS >= NRPEMEE .OR. JSEXPLORER == 1 )THEN
+      FILENAME=OUTDIR//'EE_RPEM.OUT'
+      IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_RPEM == 0 )THEN
+        RSTFIRST_RPEM=1
+        WRITE(*,'(A)')'READING TO STARTING TIME FOR RPEM'
+        FSIZE = FILESIZE(FILENAME)
+        OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')     
+        READ(95) VER,HSIZE,BSIZE
+        IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+        OFFSET = HSIZE
+    
+        NS = 0
+        DO WHILE(OFFSET < FSIZE)
+          ISTAT = FSEEK(95,OFFSET,0)
+
+          IF( EOF(95) )THEN
+            WRITE(95) EETIME
+            EXIT
+          ENDIF
+          IF( ISTAT /= 0 ) EXIT
+        
+          READ(95) PTIME
+      
+          IF( DEBUG )THEN
+            NS=NS+1
+            IF( NS == 8 )THEN
+              WRITE(*,'(F10.3)')PTIME
+              NS=0
+            ELSE
+              WRITE(*,'(F10.3,\)')PTIME
+            ENDIF
+          ENDIF
+          IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+          OFFSET = OFFSET + BSIZE
+        ENDDO
+        IF( DEBUG ) WRITE(*,'(" ")')
+        WRITE(*,'(A)')'FINISHED READING RPEM'
+        
+      ELSE
+        OPEN(95,FILE=FILENAME,STATUS='OLD',POSITION='APPEND',FORM='BINARY')
+        WRITE(95) EETIME
+      ENDIF
+
+      DO L=2,LA
+        IF( LMASKRPEM(L) .OR. INITRPEM == 0 )THEN                                                                                               
+          WRITE(95) REAL(WQRPS(L),4)
+        ENDIF
+      ENDDO
+      DO L=2,LA
+        IF( LMASKRPEM(L) .OR. INITRPEM == 0 )THEN                                                                                               
+          WRITE(95) REAL(WQRPR(L),4)
+        ENDIF
+      ENDDO
+      DO L=2,LA
+        IF( LMASKRPEM(L) .OR. INITRPEM == 0 )THEN                                                                                               
+          WRITE(95) REAL(WQRPE(L),4)
+        ENDIF
+      ENDDO
+      DO L=2,LA
+        IF( LMASKRPEM(L) .OR. INITRPEM == 0 )THEN                                                                                               
+          WRITE(95) REAL(WQRPD(L),4)
+        ENDIF
+      ENDDO
+        
+      FLUSH(95)
+      CLOSE(95,STATUS='KEEP')
+      NRPEMSTEPS = 0
+    ENDIF    
+  ENDIF
+END SUBROUTINE
+
+SUBROUTINE WQOUT
+
+  INTEGER(IK4) :: VER,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: L,K,MW,NW,ITMP,NS
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: WQ
+  REAL(RKD)    :: PTIME
+
+  ! *** WATER QUALITY
+  !IF(ISTRAN(8) > 0 )THEN
+    !  1) CHC - cyanobacteria 
+    !  2) CHD - diatom algae 
+    !  3) CHG - green algae 
+    !  4) ROC - refractory particulate organic carbon 
+    !  5) LOC - labile particulate organic carbon 
+    !  6) DOC - dissolved organic carbon 
+    !  7) ROP - refractory particulate organic phosphorus 
+    !  8) LOP - labile particulate organic phosphorus 
+    !  9) DOP - dissolved organic phosphorus 
+    ! 10) P4D - total phosphate
+    ! 11) RON - refractory particulate organic nitrogen 22) macroalgae
+    ! 12) LON - labile particulate organic nitrogen
+    ! 13) DON - dissolved organic nitrogen
+    ! 14) NHX - ammonia nitrogen
+    ! 15) NOX - nitrate nitrogen
+    ! 16) SUU - particulate biogenic silica
+    ! 17) SAA - dissolved available silica
+    ! 18) COD - chemical oxygen demand
+    ! 19) DOX - dissolved oxygen
+    ! 20) TAM - total active metal
+    ! 21) FCB - fecal coliform bacteria
+    
+  IF( ISRESTI == 1 )THEN
+    NWQVAR=NWQV
+    IF( IDNOTRVA > 0 ) NWQVAR = NWQVAR+1   ! *** Macroalgae always needs to be the last WQ variable since it is not advected
+    IWQ=0
+    DO MW=1,NWQVAR
+      IWQ(MW)=ISTRWQ(MW)
+    ENDDO
+    IF( IDNOTRVA > 0 ) IWQ(NWQVAR)=1
+  ENDIF 
+  
+  FILENAME=OUTDIR//'EE_WQ.OUT'
+  IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_WQ == 0 )THEN
+    RSTFIRST_WQ=1
+    WRITE(*,'(A)')'READING TO STARTING TIME FOR WQ'
+    FSIZE = FILESIZE(FILENAME)
+    OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')     
+    READ(95) VER,HSIZE,BSIZE
+    IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+    OFFSET = HSIZE
+    
+    NS = 0
+    DO WHILE(OFFSET < FSIZE)
+      ISTAT = FSEEK(95,OFFSET,0)
+
+      IF( EOF(95) )THEN
+        WRITE(95) EETIME
+        EXIT
+      ENDIF
+      IF( ISTAT /= 0 ) EXIT
+        
+      READ(95) PTIME
+      
+      IF( DEBUG )THEN
+        NS=NS+1
+        IF( NS == 8 )THEN
+          WRITE(*,'(F10.3)')PTIME
+          NS=0
+        ELSE
+          WRITE(*,'(F10.3,\)')PTIME
+        ENDIF
+      ENDIF
+      IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+      OFFSET = OFFSET + BSIZE
+    ENDDO
+    IF( DEBUG ) WRITE(*,'(" ")')
+    WRITE(*,'(A)')'FINISHED READING WQ'
+    
+  ELSE
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',POSITION='APPEND',FORM='BINARY')
+    WRITE(95) EETIME
+  ENDIF
+  
+  DO NW=1,NWQVAR
+    IF( IWQ(NW) > 0 )THEN
+      DO L=2,LA
+        DO K=KSZ(L),KC
+          WQ=WQV(L,K,NW)
+          WRITE(95) WQ
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDDO
+  FLUSH(95)
+  CLOSE(95,STATUS='KEEP')
+  
+END SUBROUTINE
+
+SUBROUTINE BCOUT
+
+  ! *** OUTPUT QSUM AND OPEN BC FLOWS
+  INTEGER(IK4) :: VER,HSIZE,BSIZE,ISTAT
+  INTEGER(IK4) :: L,K,IBC,LL,LQ,LE,LN,ITMP,NS
+  INTEGER(IK8) :: FSIZE, OFFSET
+  REAL(RK4)    :: TMP
+  REAL(RKD)    :: PTIME
+
+  FILENAME=OUTDIR//'EE_BC.OUT'
+  IF( ISRESTI /= 0 .AND. ICONTINUE == 1 .AND. RSTFIRST_BC == 0 )THEN
+    RSTFIRST_BC=1
+    WRITE(*,'(A)')'READING TO STARTING TIME FOR BC'
+    FSIZE = FILESIZE(FILENAME)
+    OPEN(95,FILE=FILENAME,ACTION='READWRITE',STATUS='OLD',FORM='BINARY')  
+    READ(95) VER,HSIZE,BSIZE
+    IF(VER /= 8400) WRITE(*,*)'FILE IS CORRUPTED OR VERSION IS INVALID!'    
+    OFFSET = HSIZE
+    
+    NS = 0
+    DO WHILE(OFFSET < FSIZE)
+      ISTAT = FSEEK(95,OFFSET,0)
+
+      IF( EOF(95) )THEN
+        WRITE(95) EETIME
+        EXIT
+      ENDIF
+      IF( ISTAT /= 0 ) EXIT
+        
+      READ(95) PTIME
+      
+      IF( DEBUG )THEN
+        NS=NS+1
+        IF( NS == 8 )THEN
+          WRITE(*,'(F10.3)')PTIME
+          NS=0
+        ELSE
+          WRITE(*,'(F10.3,\)')PTIME
+        ENDIF
+      ENDIF
+      IF( ABS(PTIME-TIMEDAY) <= 1E-4 .OR. PTIME > TIMEDAY ) EXIT
+
+      OFFSET = OFFSET + BSIZE
+    ENDDO
+    IF( DEBUG ) WRITE(*,'(" ")')
+    WRITE(*,'(A)')'FINSIHED READING BC'
+    
+  ELSE
+    OPEN(95,FILE=FILENAME,POSITION='APPEND',STATUS='OLD',FORM='BINARY')
+    WRITE(95) EETIME
+  ENDIF
+  
+  IF( ISRESTI == 0 .OR. ICONTINUE == 0) NRESTART=0  
+
+  ! *** OUTPUT SELECTIVE QSUM
+  IF( KC > 1 )THEN
+    WRITE(95) (REAL(QSUM(L,KC),4), L=2,LA)
+    DO IBC=1,NBCS
+      L=LBCS(IBC)
+      WRITE(95) (REAL(QSUM(L,K),4),K=1,KC)
+    ENDDO
+    IF( NGWSER > 0 .OR. ISGWIT /= 0 )THEN
+      WRITE(95) (REAL(QSUM(L,KSZ(L)),4), L=2,LA)
+    ENDIF
+  ELSE
+    ! *** SINGLE LAYER
+    DO L=2,LA
+      WRITE(95) REAL(QSUME(L),4)
+    ENDDO
+  ENDIF
+  
+  ! **  ACCUMULATE FLUXES ACROSS OPEN BOUNDARIES (OUTPUT IN LOBCS ORDER)
+  DO LL=1,NPBS
+    LQ=LPBS(LL)
+    LN=LNC(LQ)
+    WRITE(95) (REAL(VHDX2(LN,K),4),K=1,KC)
+  ENDDO
+  DO LL=1,NPBW
+    LQ=LPBW(LL)
+    LE=LEC(LQ)
+    WRITE(95) (REAL(UHDY2(LE,K),4),K=1,KC)
+  ENDDO
+  DO LL=1,NPBE
+    LQ=LPBE(LL)
+    WRITE(95) (REAL(UHDY2(LQ,K),4),K=1,KC)
+  ENDDO
+  DO LL=1,NPBN
+    LQ=LPBN(LL)
+    WRITE(95) (REAL(VHDX2(LQ,K),4),K=1,KC)
+  ENDDO
+  IF (NQCTL > 0) THEN
+    WRITE(95) (((REAL(QCTLT(K,L,NS),4), K=1,KC), NS=1,2), L=1,NQCTL)
+    IF(NQCTLSER > 0 .OR. NQCRULES > 0) THEN
+      WRITE(95) (INT(HSCTL(L).CUR.STATE), L=1,NQCTL)
+      WRITE(95) (INT(HSCTL(L).CUR.UNITS), L=1,NQCTL)
+      WRITE(95) (INT(HSCTL(L).CUR.ID), L=1,NQCTL)
+      WRITE(95) (REAL(HSCTL(L).CUR.FLOW,4), L=1,NQCTL)
+      WRITE(95) (REAL(HSCTL(L).CUR.HEIGHT,4), L=1,NQCTL)
+      WRITE(95) (REAL(HSCTL(L).CUR.WIDTH,4), L=1,NQCTL)
+      WRITE(95) (REAL(HSCTL(L).CUR.SILL,4), L=1,NQCTL)
+    ENDIF
+  ENDIF
+  IF (NQWR > 0) THEN
+    WRITE(95) (INT(WRCTL(L).CUR.STATE), L=1,NQWR)
+    WRITE(95) (REAL(WRCTL(L).CUR.FLOW,4), L=1,NQWR)
+  ENDIF  
+  CLOSE(95,STATUS='KEEP')
+  
+END SUBROUTINE
+
+INTEGER FUNCTION BLOCKBC(CELL3D)
+  INTEGER :: DSIZE,CELL2D,CELL3D
+  CELL2D = LA - 1
+  DSIZE = 2                 ! *** EETIME
+  IF( KC > 1 )THEN
+    DSIZE = DSIZE + CELL2D
+    DSIZE = DSIZE + KC*NBCS
+    IF( NGWSER > 0 .OR. ISGWIT /= 0 )THEN
+      DSIZE = DSIZE + CELL2D
+    ENDIF
+  ELSE
+    DSIZE = DSIZE + CELL2D  ! *** SINGLE LAYER
+  ENDIF
+  
+  ! **  ACCUMULATE FLUXES ACROSS OPEN BOUNDARIES (OUTPUT IN LOBCS ORDER)
+  DSIZE = DSIZE + KC*NPBS
+  DSIZE = DSIZE + KC*NPBW
+  DSIZE = DSIZE + KC*NPBE
+  DSIZE = DSIZE + KC*NPBN
+  IF (NQCTL > 0) THEN
+    DSIZE = DSIZE + NQCTL*2*KC
+    IF(NQCTLSER > 0 .OR. NQCRULES > 0) THEN
+      DSIZE = DSIZE + 7*NQCTL
+    ENDIF
+  ENDIF
+  IF (NQWR > 0) THEN
+    DSIZE = DSIZE + 2*NQWR
+  ENDIF  
+  BLOCKBC = DSIZE*4
+END FUNCTION
+
+SUBROUTINE GRIDOUT
+  USE INFOMOD,ONLY:READSTR
+  IMPLICIT NONE
+  INTEGER(IK4) :: NACTIVE,VER,HSIZE,BSIZE,K,L,CELL3D
+  
+  NACTIVE=LA-1
+
+  FILENAME=OUTDIR//'EE_GRD.OUT'
+  VER   = 8400
+  HSIZE = 8*4
+  BSIZE = 0
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN')
+  CLOSE(95,STATUS='DELETE')
+  OPEN(95,FILE=FILENAME,STATUS='UNKNOWN',ACCESS='SEQUENTIAL',FORM='BINARY')
+  WRITE(95) VER,HSIZE,BSIZE
+  WRITE(95) INT(IC,4),INT(JC,4),INT(KC,4),NACTIVE,IGRIDV
+  
+  !XCR(1:4,JMN:JMX,IMN:IMX),YCR(1:4,JMN:JMX,IMN:IMX)
+  IF(IGRIDV > 0) THEN ! Sigma-Zed level
+    WRITE(95) (INT(KSZ(L),4), L = 2,LA)
+    WRITE(95) ((REAL(DZC(L,K),4), K=1,KC), L = 2,LA)
+  ELSE  ! ** Standard sigma stretched level
+    WRITE(95) (REAL(DZCK(K),4), K=1,KC)
+  ENDIF
+  CLOSE(95,STATUS='KEEP')
+  
+END SUBROUTINE
+
+SUBROUTINE HSTROUT
+END SUBROUTINE
+
+SUBROUTINE ARRAYSOUT
+
+  ! *** TIME VARIABLE USER SPECIFIED ARRAYS IN THIS SECTION
+
+  ! FLAGS: ARRAY TYPE, TIME VARIABLE
+  ! ARRAY TYPE:    0 = L            DIM'D
+  !                1 = L,KC         DIM'D
+  !                2 = L,0:KC       DIM'D
+  !                3 = L,KB         DIM'D
+  !                4 = L,KC,NCLASS  DIM'D
+  ! TIME VARIABLE: 0 = NOT CHANGING
+  !                1 = TIME VARYING
+
+  INTEGER(IK4) :: K,L,ITYPE,ITIMEVAR
+  REAL(RK4)    :: ZERO
+  REAL(RK4)    :: TMPVAL
+  CHARACTER*8 ARRAYNAME
+ 
+  IF( ISINWV == 2 )THEN
+    ZERO=0.0
+    FILENAME=OUTDIR//'EE_ARRAYS.OUT'
+    OPEN(95,FILE=FILENAME,STATUS='UNKNOWN', POSITION='APPEND',FORM='BINARY')
+
+    ! *** TIME VARIABLE FLAG
+    ITIMEVAR = 1
+
+    ITYPE = 1
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='AH'
+    WRITE(95)ARRAYNAME
+    DO K=1,KC
+      DO L=2,LA
+        WRITE(95)REAL(AH(L,K),4)
+      ENDDO
+    ENDDO
+
+    ITYPE = 1
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='AV'
+    WRITE(95)ARRAYNAME
+    DO K=1,KC
+      DO L=2,LA
+        TMPVAL=AV(L,K)*HP(L)
+        WRITE(95)TMPVAL
+      ENDDO
+    ENDDO
+
+    ITYPE = 2
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='QQ'
+    WRITE(95)ARRAYNAME
+    DO K=0,KC
+      DO L=2,LA
+        WRITE(95)REAL(QQ(L,K),4)
+      ENDDO
+    ENDDO
+
+    ITYPE = 1
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='HPK'
+    WRITE(95)ARRAYNAME
+    DO K=1,KC
+      DO L=2,LA
+        WRITE(95)REAL(HPK(L,K),4)
+      ENDDO
+    ENDDO
+    
+    IF( ISHDMF >= 1 )THEN
+      ITYPE = 1
+      WRITE(95)ITYPE,ITIMEVAR
+      ARRAYNAME='FMDUX'
+      WRITE(95)ARRAYNAME
+      DO K=1,KC
+        DO L=2,LA
+          TMPVAL=FMDUX(L,K)
+          WRITE(95)TMPVAL
+        ENDDO
+      ENDDO
+
+      ITYPE = 1
+      WRITE(95)ITYPE,ITIMEVAR
+      ARRAYNAME='FMDUY'
+      WRITE(95)ARRAYNAME
+      DO K=1,KC
+        DO L=2,LA
+          TMPVAL=FMDUY(L,K)
+          WRITE(95)TMPVAL
+        ENDDO
+      ENDDO
+
+      ITYPE = 1
+      WRITE(95)ITYPE,ITIMEVAR
+      ARRAYNAME='FMDVX'
+      WRITE(95)ARRAYNAME
+      DO K=1,KC
+        DO L=2,LA
+          TMPVAL=FMDVX(L,K)
+          WRITE(95)TMPVAL
+        ENDDO
+      ENDDO
+
+      ITYPE = 1
+      WRITE(95)ITYPE,ITIMEVAR
+      ARRAYNAME='FMDVY'
+      WRITE(95)ARRAYNAME
+      DO K=1,KC
+        DO L=2,LA
+          TMPVAL=FMDVY(L,K)
+          WRITE(95)TMPVAL
+        ENDDO
+      ENDDO
+    ENDIF
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='QGW' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(QGW(L),4)
+    ENDDO
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='RAINT' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(RAINT(L),4)
+    ENDDO
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='EVAPT' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(EVAPT(L),4)
+    ENDDO
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='QSUME' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(QSUME(L),4)
+    ENDDO
+
+    if( .false. )then
+    ! *** SURFACE HEAT FLUX ARRAYS
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='HBLW' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(PMCTESTX(1,L),4)
+    ENDDO
+    
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='HBCD' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(PMCTESTX(2,L),4)
+    ENDDO
+    
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='HBCV' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(PMCTESTX(3,L),4)
+    ENDDO
+    
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='HBEV' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(PMCTESTX(4,L),4)
+    ENDDO
+    
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='HBNT' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(PMCTESTX(5,L),4)
+    ENDDO
+    ! *** END OF SURFACE HEAT FLUX ARRAYS
+    
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='WINDST' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(WINDST(L),4)
+    ENDDO
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='WINDCD10' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(WINDCD10(L),4)
+    ENDDO
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='TSX' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(TSX(L),4)
+    ENDDO
+
+    ITYPE = 0
+    WRITE(95)ITYPE,ITIMEVAR
+    ARRAYNAME='TSY' 
+    WRITE(95)ARRAYNAME
+    DO L=2,LA
+      WRITE(95)REAL(TSY(L),4)
+    ENDDO
+    endif
+    
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='U'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(U(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='V'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(V(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='TBX' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(TBX(L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='TBY' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(TBY(L),4)
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='B'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(B(L,K),4)
+    !  ENDDO
+    !ENDDO
+    
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='U1'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(U1(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='V1'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(V1(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='U2'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(U2(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='V2'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(V2(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='V1U' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(V1U(L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='U1V' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(U1V(L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='LMASKDRY' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  IF( LMASKDRY(L) )THEN
+    !    WRITE(95)REAL(1.0,4)
+    !  ELSE
+    !    WRITE(95)REAL(0.0,4)
+    !  ENDIF
+    !ENDDO
+
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='QSBDLDX' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(QSBDLDX(L,2),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='QSBDLDY' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(QSBDLDY(L,2),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='UBL' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(UBL(L,2),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='VBL' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(VBL(L,2),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='BLDELTA' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL( ( QSBDLDX(L,2)-QSBDLDX(LEC(L),2) + QSBDLDY(L,2)-QSBDLDY(LNC(L),2) ),4)
+    !ENDDO
+    
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FXMHK'  
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    IF( K < KSZ(L) )THEN
+    !      WRITE(95)REAL(-999,4)
+    !    ELSE
+    !      WRITE(95)REAL(FXMHK(L,k),4)
+    !    ENDIF
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FYMHK'       
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    IF( K < KSZ(L) )THEN
+    !      WRITE(95)REAL(-999.,4)
+    !    ELSE
+    !      WRITE(95)REAL(FYMHK(L,K),4)
+    !    ENDIF
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FXMHKE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(FXMHKE(L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FYMHKE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(FYMHKE(L),4)
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FXSUP'  
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    IF( K < KSZ(L) )THEN
+    !      WRITE(95)REAL(-999,4)
+    !    ELSE
+    !      WRITE(95)REAL(FXSUP(L,k),4)
+    !    ENDIF
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FYSUP'       
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    IF( K < KSZ(L) )THEN
+    !      WRITE(95)REAL(-999.,4)
+    !    ELSE
+    !      WRITE(95)REAL(FYSUP(L,K),4)
+    !    ENDIF
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FXSUPE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(FXSUPE(L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FYSUPE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(FYSUPE(L),4)
+    !ENDDO
+    
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='ET' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(PMCTESTX(1,L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='CSHE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(PMCTESTX(2,L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='ICETEMP' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(PMCTESTX(3,L),4)
+    !ENDDO
+
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FRAZILICE'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(FRAZILICE(L,K),4)
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='AB'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    TMPVAL=AB(L,K)*HP(L)
+    !    WRITE(95)TMPVAL
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 2
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='W'
+    !WRITE(95)ARRAYNAME
+    !DO K=0,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(W(L,K),4)
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 2
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='W2'
+    !WRITE(95)ARRAYNAME
+    !DO K=0,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(W2(L,K),4)
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='DML'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(DML(L,K),4)
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='UUU'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(UUU(L,K),4)
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='VVV'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(VVV(L,K),4)
+    !  ENDDO
+    !ENDDO
+
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='UV' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(UV(L),4)
+    !ENDDO
+
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='VU' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(VU(L),4)
+    !ENDDO
+
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='RCX' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(RCX(L),4)
+    !ENDDO
+
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='RCY' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(RCY(L),4)
+    !ENDDO
+
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FXVEG'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(FXVEG(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 1
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FYVEG'
+    !WRITE(95)ARRAYNAME
+    !DO K=1,KC
+    !  DO L=2,LA
+    !    WRITE(95)REAL(FYVEG(L,K),4)
+    !  ENDDO
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FXVEGE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(FXVEGE(L),4)
+    !ENDDO
+    !
+    !ITYPE = 0
+    !WRITE(95)ITYPE,ITIMEVAR
+    !ARRAYNAME='FYVEGE' 
+    !WRITE(95)ARRAYNAME
+    !DO L=2,LA
+    !  WRITE(95)REAL(FYVEGE(L),4)
+    !ENDDO
+
+  ! FLUSH(95)
+  CLOSE(95,STATUS='KEEP')
+
+  ENDIF
+END SUBROUTINE
+  
+INTEGER(IK8) FUNCTION FILESIZE(FNAME)
+
+  USE IFPORT
+
+  CHARACTER*(*), INTENT(IN) :: FNAME
+  INTEGER(IK4) :: ISTAT
+  INTEGER(IK8) :: FINFO(12)
+  
+  ISTAT = STAT(FNAME,FINFO)     !  ISTAT = FSTAT(IUNIT,FINFO)
+  IF( ISTAT == 0 )THEN
+    FILESIZE = FINFO(8)
+  ELSE
+    FILESIZE = 0
+  ENDIF
+  
+END FUNCTION
+
+END MODULE

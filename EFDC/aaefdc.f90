@@ -1,0 +1,2959 @@
+! **********************************************************************
+!
+!  RELEASE:         EFDCPlus_085
+!                   SIGMA-Zed (SGZ) VERSION
+!  DATE:            2019-08-19
+!  BY:              DSI, LLC
+!                   EDMONDS, WASHINGTON  98020   
+!                   USA
+!                   WEBSITE:  https://www.eemodelingsystem.com/
+!  LEAD DEVELOPER:  PAUL M. CRAIG 
+
+PROGRAM EFDC
+  !
+  ! **  WELCOME TO THE ENVIRONMENTAL FLUID DYNAMICS COMPUTER CODE SERIES
+  ! **  DEVELOPED BY JOHN M. HAMRICK.  THE EFDC CODE WAS ORGINALLY
+  ! **  DEVELOPED AT VIRGINIA INSTITUTE OF MARINE SCIENCE
+  ! **  /SCHOOL OF MARINE SCIENCE, THE COLLEGE OF
+  ! **  WILLIAM AND MARY, GLOUCESTER POINT, VA 23062
+  ! **
+  ! **  EFDC SOLVES THE 3D REYNOLDS AVERAGED NAVIER-STOKES
+  ! **  EQUATIONS (WITH HYDROSTATIC AND BOUSINESSQ APPROXIMATIONS) AND
+  ! **  TRANSPORT EQUATIONS FOR TURBULENT INTENSITY, TURBULENT
+  ! **  INTENSITY X LENGTH SCALE, SALINITY (OR WATER VAPOR CONTENT),
+  ! **  TEMPERATURE, AN INERT TRACER (CALLED DYE), A DYNAMICALLY ACTIVE
+  ! **  SUSPENDED SETTLING PARTICLE FIELD (CALLED SEDIMENT).  A FREE
+  ! **  SURFACE OR RIGID LID IS PRESENT ON THE VERTICAL BOUNDARY Z=1
+  ! **  IN THE SIGMA STRETCHED VERTICAL COORDINATE.  THE HORIZONTAL
+  ! **  COORDINATE SYSTEM IS CURVILINEAR AND ORTHOGONAL.
+  ! **  THE NUMERICAL SOLUTION SCHEME IS ON A SPATIALLY STAGGERED MAC
+  ! **  OR C GRID.
+  ! **  SPATIAL SOLUTION OF THE EXTERNAL MODE FOR THE FREE SURFACE
+  ! **  ELEVATION OR KINEMATIC PRESSURE UNDER THE RIGID LID IS BY
+  ! **  CONJUGATE GRADIENT SOLUTION OF A PSEUDO-HEMHOLTZ EQUATION.
+  ! **  THE INTERNAL SOLUTION IS IMPLICIT FOR THE VERTICAL SHEAR OR 
+  ! **  VELOCITY STRUCTURE.  
+  ! **  A NUMBER OF OPTIONS ARE AVAILABLE FOR REPRESENTING THE ADVECTIVE
+  ! **  TRANSPORT TERMS IN THE MOMENTUM AND SCALAR TRANSPORT EQUATIONS.
+  ! **
+  ! **  PRIMARY DOCUMENTATION INCLUDES:
+  !     HAMRICK, J. M., 1992A:  A THREE-DIMENSIONAL ENVIRONMENTAL
+  !     FLUID DYNAMICS COMPUTER CODE: THEORETICAL AND COMPUTATIONAL
+  !     ASPECTS. THE COLLEGE OF WILLIAM AND MARY, VIRGINIA INSTITUTE
+  !     OF MARINE SCIENCE, SPECIAL REPORT 317, 63 PP.
+  !     HAMRICK, J. M., 1996A:  USERS MANUAL FOR THE ENVIRONMENTAL
+  !     FLUID DYNAMIC COMPUTER CODE. THE COLLEGE OF WILLIAM AND MARY,
+  !     VIRGINIA INSTITUTE OF MARINE SCIENCE, SPECIAL REPORT 328, 224 PP.
+  !     PARK, K., A. Y. KUO, J. SHEN, AND J. M. HAMRICK, 1995.
+  !     A THREE-DIMENSIONAL HYDRODYNAMIC-EUTROPHICATION MODEL (HEM3D):
+  !     DESCRIPTION OF WATER QUALITY AND SEDIMENT PROCESSES SUBMODELS.
+  !     THE COLLEGE OF WILLIAM AND MARY, VIRGINIA INSTITUTE OF MARINE
+  !     SCIENCE. SPECIAL REPORT 327, 113 PP.
+  !
+  !     A COMPREHENSIVE EFDC+ THEORY KNOWLEDGE BASE HAS BEEN DEVELOPED BY
+  !     DSI AND CAN BE FOUND AT:
+  !     https://eemodelingsystem.atlassian.net/wiki/spaces/ETG/overview
+  ! 
+  ! **  DSI ASSUMES NO LIABILITY FOR USE OF THIS CODE FOR ENVIRONMENTAL
+  ! **  AND ENGINEERING STUDIES.
+  ! **
+  ! **  THIS CODE HAS BEEN COMPLIED ON A WINDOWS 7 SYSTEM USING 
+  ! **  THE INTEL'S FORTRAN COMPOSER XE 2013 COMPILER
+  ! **  THIS VERSION PROVIDES AUTOMATIC MEMORY ALLOCATION USING F90'S
+  ! **  DYNAMIC MEMORY ALLOCATION FUNCTIONS
+  ! **
+  ! **  THE FOLLOWING FILES MAY BE NECESSARY TO RUN THIS CODE:
+  ! **      EFDC.INP
+  ! **      CELL.INP
+  ! **      CELLLT.INP
+  ! **      DXDY.INP
+  ! **      LXLY.INP
+  ! **      SGZLAYER.INP
+  ! **      SALT.INP OR RESTART.INP OR RESTRAN.INP
+  ! **      TEMP.INP OR RESTART.INP OR RESTRAN.INP
+  ! **      ASER.INP
+  ! **      WSER.INP
+  ! **      QSER.INP
+  ! **      PSER.INP
+  ! **      SSER.INP
+  ! **      TSER.INP
+  ! **      DSER.INP
+  ! **      SDSER.INP
+  ! **      SNSER.INP
+  ! **      TXSER.INP
+  ! **      SFSER.INP
+  ! **      TXSER.INP
+  ! **      QCTL.INP
+  ! **      MASK.INP
+  ! **      SHOW.INP
+  ! **      VEGE.INP
+  ! **      MODDXDY.INP
+  ! **      MODCHAN.INP
+  ! **      GWATER.INP
+
+  !----------------------------------------------------------------------!
+  ! CHANGE RECORD  
+  ! DATE MODIFIED     BY               DESCRIPTION
+  !----------------------------------------------------------------------!
+  !    2015-1O       Paul M. Craig     Implemented Sigma-Z
+
+  USE GLOBAL
+  USE OMP_LIB
+  USE IFPORT
+  USE XYIJCONV,ONLY:XY2IJ
+  USE RESTART_MODULE
+  USE EFDCOUT
+  USE INFOMOD,ONLY:SKIPCOM,READSTR
+  USE DRIFTER,ONLY:DRIFTERINP,AREA_CENTRD
+
+  IMPLICIT NONE
+
+  CHARACTER*80 TITLE
+
+  REAL(RKD), ALLOCATABLE,DIMENSION(:,:) :: SHOTS
+  INTEGER,   ALLOCATABLE,DIMENSION(:,:) :: IFDCH
+
+  REAL, ALLOCATABLE,DIMENSION(:) :: THICK
+
+  REAL :: TSHIFT,DET,XLNUTME,YLTUTMN,TA1,TA2,FORCSUM,ZERO,MAXTHICK,DEPTHMIN
+  REAL :: CCUE,CCVE,CCUN,CCVN,TMPVAL,TMPCOR,ANG1,ANG2,ANG,DETTMP,DZPC
+  REAL :: ANGTMP1,ANGTMP2,DYUP1,DYUM1,DDXDDDY,DDYDDDX,DXVLN,DXVLS,C
+  REAL :: TMP,BELMIN,VOLLDRY,WTM,WTMP,DELVOL,C1,ETMP,DZGTMP,FRACK
+  REAL :: GRADW,GRADE,GRADS,GRADN
+
+  REAL(RK4) :: CPUTIME(2)
+  REAL(RKD) :: T0,T1,T2,T3,T4,T9,DELSNAP,TCPU
+  REAL(RKD),EXTERNAL :: DSTIME
+
+  INTEGER :: COUNT,NSNAPMAX,NT,iStatus,NS,NTMP,NSHOTS,ISNAP,NFDCHIJ
+  INTEGER :: ITMPVAL,IFIRST,ILAST,ISO,JDUMY,IISTMP,LPBTMP,LBELMIN
+  INTEGER :: L,K,I,J,IS,M,LL,LP,LF,LT,LN,LS,NX,LW,KM,LE,ND,IYEAR,NP
+  
+  INTEGER(IK4) :: IERROR
+  INTEGER(IK4) :: IRET
+  INTEGER(IK8) :: NREST,NN
+  INTEGER(1)   :: VERSION
+  
+  LOGICAL PAUSEIT
+  LOGICAL(4) :: RES
+  
+  CHARACTER*20  BUFFER
+  CHARACTER*120 LINE
+  CHARACTER*8   DAY
+  
+#ifdef _WIN32
+  INTEGER(IK4), EXTERNAL :: SET_EXCEPTION_TRAPS
+#endif
+
+#ifdef WASPOUT
+  ! *** WASP LINKAGE
+  interface
+    subroutine hlclose(hl_handle, ierror)
+      !ms$attributes c,dllimport,alias:'__hlclose' :: hlclose
+      Integer*4 hl_handle, ierror
+      !ms$attributes reference :: hl_handle, ierror
+    END subroutine
+  END interface
+#endif
+  
+  ! *** GET START OF ELAPSED TIME COUNTER
+  TIME_START=DSTIME(1)
+  
+  VERSION = 3
+  
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+  ! ***
+
+  COUNT = NARGS()
+  PAUSEIT = .TRUE.
+  NTHREADS = 1
+
+  ! *** GET THE COMMAND LINE ARGUMENTS, IF ANY
+  IF( COUNT > 1 )THEN
+    ! *** ARGUMENT 1
+    CALL GETARG(1, BUFFER, iStatus)
+    IF( Buffer(1:4) == '-NOP' .OR. Buffer(1:4) == '-nop' )THEN
+      PAUSEIT=.FALSE.
+    ENDIF
+  !$        IF( Buffer(1:3) == '-NT' .OR. Buffer(1:3) == '-nt' )THEN
+  !$          READ(Buffer(4:10),*) NTHREADS
+  !$        ENDIF
+    IF( COUNT > 2 )THEN
+      ! *** ARGUMENT 2
+      CALL GETARG(2, BUFFER, iStatus)
+      IF( Buffer(1:4) == '-NOP' .OR. Buffer(1:4) == '-nop' )THEN
+        PAUSEIT=.FALSE.
+      ENDIF
+  !$          IF( Buffer(1:3) == '-NT' .OR. Buffer(1:3) == '-nt' )THEN
+  !$            READ(Buffer(4:10),*) NTHREADS
+  !$          ENDIF
+     ENDIF
+  ENDIF
+
+  IF( NTHREADS < 1 ) NTHREADS = 1
+
+#ifdef _WIN32  
+! *** SETTING EXCEPTION TRAP
+  IF( PAUSEIT )THEN
+    IRET = SET_EXCEPTION_TRAPS()
+  ENDIF
+#endif
+  
+  CALL WELCOME
+  
+  ! *** BEGIN OMP SECTION
+  !$OMP PARALLEL
+  !$OMP MASTER
+  !$    NT = OMP_GET_NUM_THREADS()
+  !$OMP END MASTER
+  !$OMP END PARALLEL
+
+  !$    IF( NT < NTHREADS )NTHREADS=NT
+  !$    CALL OMP_SET_NUM_THREADS(NTHREADS)
+  !$    WRITE(*,1)NTHREADS
+
+  1 FORMAT( '***********************************************************************',/, &
+            '***          This EFDCPlus Run used:',I4,' thread(s)                  ***',/, &
+            '***********************************************************************',/)
+  !                                                                                                                       
+  ! **  OPEN OUTPUT FILES                                                                                                 
+  !                                                                                                                       
+  RES = MAKEDIRQQ('#output')
+  IF( .NOT. RES )THEN
+    RES = GETLASTERRORQQ( )
+    IF( RES == ERR$NOENT )THEN
+      PRINT*,'THE PATH FOR $OUTPUT IS NOT FOUND!'
+      STOP
+    ELSEIF (RES == ERR$ACCES )THEN
+      PRINT*,'CANNOT CREATE THE FOLDER: PERMISSION DENIED!'
+      STOP
+    ENDIF
+  ENDIF
+
+#ifdef _WIN
+  OUTDIR='#output\'
+#else
+  OUTDIR='#output/'
+#endif
+  OPEN(7,FILE=OUTDIR//'EFDC.OUT',STATUS='UNKNOWN')
+  CLOSE(7,STATUS='DELETE')
+  OPEN(7,FILE=OUTDIR//'EFDC.OUT',STATUS='UNKNOWN')
+
+  OPEN(8,FILE=OUTDIR//'EFDCLOG.OUT',STATUS='UNKNOWN')
+  CLOSE(8,STATUS='DELETE')
+  OPEN(8,FILE=OUTDIR//'EFDCLOG.OUT',STATUS='UNKNOWN')
+
+  OPEN(9,FILE=OUTDIR//'TIME.LOG',STATUS='UNKNOWN')
+  CLOSE(9,STATUS='DELETE')
+  OPEN(9,FILE=OUTDIR//'TIME.LOG',STATUS='UNKNOWN')
+  CLOSE(9)
+
+  OPEN(1,FILE=OUTDIR//'DRYWET.LOG',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+  OPEN(1,FILE=OUTDIR//'SEDIAG.OUT',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+  OPEN(1,FILE=OUTDIR//'CFL.OUT',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+  OPEN(1,FILE=OUTDIR//'NEGSEDSND.OUT',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+  OPEN(1,FILE=OUTDIR//'ERROR.LOG',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+  
+  ! *** PRESSURE SOLUTION ITERATION DIAGNOSTICS
+  OPEN(888,FILE=OUTDIR//'CALPUV.LOG',STATUS='UNKNOWN')
+  CLOSE(888,STATUS='DELETE')
+  OPEN(888,FILE=OUTDIR//'CALPUV.LOG',STATUS='UNKNOWN')
+  WRITE(888,'(A15,A10,A12,2(10X,2A10))') 'N','NITER','TIMEDAY','NPUVAVG','NPUVMAX','NCONGAVG','NCONGMAX'
+  CLOSE(888)
+  
+  ! *** PAUSE THE SCREEN TO ALLOW THE USER TO REVIEW THE NUMBER OF THREADS
+  CALL SLEEPQQ(3000)
+  
+  ! **  CALL INPUT SUBROUTINE
+  NRESTART = 0
+  CALL VARINIT
+  CALL INPUT(TITLE)
+
+  ! *** Handle Runtime Flag
+  OPEN(1,FILE='0run',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+  OPEN(1,FILE='0run',STATUS='UNKNOWN')
+  CLOSE(1)
+
+  ! *** SET TIME RELATED PARAMETERS  
+  ! *** THE PARAMETER NTC=NUMBER OF TIME CYCLES, CONTROLS THE LENGTH OF RUN (NUMBER OF TIME STEPS)  
+  ! *** STARTING AND ENDING DATES, IN DAYS 
+  TIMEDAY = DBLE(TCON)*DBLE(TBEGIN)/86400._8
+  TIMEEND = TIMEDAY + (DBLE(TIDALP)*DBLE(NTC) + DBLE(DELT))/86400._8
+
+  ! *** MODEL RUN TIME ACCUMULATORS
+  !TCYCLE=0.0  
+  TLRPD=0.0  
+  THDMT=0.0  
+  TVDIF=0.0  
+  TCGRS=0.0  
+  TTSED=0.0 
+  TSSTX=0.0 
+  TSSEDZLJ=0.0 
+  TCONG=0.0  
+  TSADV=0.0  
+  TRELAXV=0.0  
+  TPUV=0.0  
+  TCEXP=0.0  
+  TAVB=0.0
+  THEAT=0.0
+  THMDF=0.0
+  TMISC=0.0  
+  TUVW=0.0  
+  TQCTL=0.0    
+  TQQQ=0.0  
+  TWQADV=0.0  
+  TWQDIF=0.0  
+  TWQKIN=0.0  
+  TWQSED=0.0  
+  CFMAX=CF
+  PI=ACOS(-1.0)
+  NBAN=49
+
+  ! ***  NTC:     NUMBER OF REFERENCE TIME PERIODS IN RUN
+  ! ***  NTSPTC:  NUMBER OF TIME STEPS PER REFERENCE TIME PERIOD
+  ! ***  TCON:    CONVERSION MULTIPLIER TO CHANGE TBEGIN TO SECONDS
+  ! ***  TBEGIN:  TIME ORIGIN OF RUN
+  ! ***  TIDALP:  REFERENCE TIME PERIOD IN SEC (IE 44714.16S OR 86400S)
+  TPN=REAL(NTSPTC)
+  NTS=INT8(NTC)*NTSPTC/NFLTMT
+  NLTS=NTSPTC*NLTC           ! *** # Transition Step to Completely linear
+  NTTS=NTSPTC*NTTC           ! *** # Transition Step to Fully Non-linear
+  NTTS=NTTS+NLTS             ! *** Total # of Steps to End of Transition
+  SNLT=0.
+  NCTBC=1
+  NPRINT=1
+  NTSVB=NTCVB*NTSPTC         ! *** Variable Bouyancy
+  ITRMAX=0
+  ITRMIN=1000
+  ERRMAX=1E-9
+  ERRMIN=1000.
+  NMMT=1
+  NBAL=1
+  NBALE=1
+  NBALO=1
+  NBUD=1
+  NHAR=1
+  NTSPTC2=2*NTSPTC/NFLTMT
+  NDISP=NTS-NTSPTC+2
+  NSHOWR=0
+  NSHOWC=0
+  DO NS=1,NASER
+    MATLAST(NS) = 2
+  ENDDO
+  DO NS=1,NWSER
+    MWTLAST(NS) = 2
+  ENDDO
+  DO NS=1,NPSER
+    MPTLAST(NS) = 2
+  ENDDO
+  DO NS=1,NQSER
+    MQTLAST(NS) = 2
+  ENDDO
+  DO NS=1,NQWRSR
+    MQWRTLST(NS) = 2
+  ENDDO
+  DO NS=1,NGWSER  
+    MGWTLAST(NS) = 2
+  ENDDO
+
+  NTMP=4+NSED+NSND+NTOX
+  DO NC=1,NTMP
+    DO NN=1,NCSER(NC)
+      MCTLAST(NN,NC)=2
+    ENDDO
+  ENDDO
+  MSFTLST=1
+
+  ! **  EFDC_EXPLORER PRIMARY OUTPUT FREQUENCY DEFINITION TABLE
+  ! **  REMOVED THE OBSOLETE SUBROUTINE SURFPLT
+  NSNAPSHOTS=0
+  NSHOTS=0
+  IF( HFREOUT == 1 )THEN
+    WRITE(*,'(A)')'HIGH FREQUENCY TIME SERIES ARE BEING USED'
+    WRITE(*,'(A)')'  READING SUBSET.INP'
+    OPEN(1,FILE='subset.inp',action='read')
+    CALL SKIPCOM(1,'*',2)
+    READ(1,*,IOSTAT=ISO) NSUBSET
+    IF( ISO > 0 ) STOP 'SUBSET.INP: READING ERROR!'
+    ALLOCATE(HFREGRP(NSUBSET))
+    ALLOCATE(IJHFRE(NSUBSET),HFREDAYBG(NSUBSET),HFREDAYEN(NSUBSET))
+    ALLOCATE(HFREDUR(NSUBSET),HFREDAY(NSUBSET),HFREMIN(NSUBSET),NPNT(NSUBSET))
+    DO NS=1,NSUBSET
+      CALL SKIPCOM(1,'*',2)
+      READ(1,*,IOSTAT=ISO) IS,IJHFRE(IS),HFREDAYBG(IS),HFREDUR(IS),HFREMIN(IS),NPNT(IS)
+      IF( ISO > 0 ) STOP 'SUBSET.INP: READING ERROR!'
+      HFREDAY(IS) = HFREDAYBG(IS)
+      HFREDAYEN(IS) = HFREDAYBG(IS) + HFREDUR(IS)/24
+      ALLOCATE (HFREGRP(IS)%ICEL(NPNT(IS)),HFREGRP(IS)%JCEL(NPNT(IS)))
+      ALLOCATE (HFREGRP(IS)%XCEL(NPNT(IS)),HFREGRP(IS)%YCEL(NPNT(IS)))
+      DO NP=1,NPNT(IS)
+        CALL SKIPCOM(1,'*',2)
+        IF( IJHFRE(IS) == 1 )THEN
+          READ(1,*,IOSTAT=ISO) HFREGRP(IS)%ICEL(NP),HFREGRP(IS)%JCEL(NP)
+        ELSE
+          READ(1,*,IOSTAT=ISO) HFREGRP(IS)%XCEL(NP),HFREGRP(IS)%YCEL(NP)
+        ENDIF   
+        IF( ISO > 0 ) STOP 'SUBSET.INP: READING ERROR!' 
+      ENDDO
+      IF( IJHFRE(IS) == 0) CALL XY2IJ(HFREGRP(IS))
+    ENDDO
+    CLOSE(1)
+  ENDIF
+
+  ! ***  TCON:    CONVERSION MULTIPLIER TO CHANGE TBEGIN TO SECONDS
+  ! ***  TBEGIN:  TIME ORIGIN OF RUN
+  ! ***  TIDALP:  REFERENCE TIME PERIOD IN SEC (IE 44714.16S OR 86400S)
+  IF( ISPPH == 0 )THEN
+    NCPPH=0
+    JSPPH=0
+  ELSEIF( ISPPH == 2 )THEN
+    NCPPH=NTS-(NTSPTC-(NTSPTC/NPPPH))/NFLTMT
+    JSPPH=1
+    NSNAPSHOTS=2
+    SNAPSHOTS(1)=(TBEGIN*TCON+TIDALP*NTC)/86400.-0.001
+    SNAPSHOTS(2)=SNAPSHOTS(1)+0.001
+  ELSE   
+    ! *** ISPPH == 1 OR 100
+    NCPPH=NTSPTC/NPPPH/NFLTMT
+    JSPPH=1
+
+    DELSNAP=DBLE(TIDALP)/DBLE(NPPPH)/DBLE(86400.)
+    T1=DBLE(TBEGIN)*DBLE(TCON)/DBLE(86400.)
+    T2=(DBLE(TBEGIN)*DBLE(TCON)+DBLE(TIDALP)*DBLE(NTC))/DBLE(86400.)  ! *** TIMEDAY AT END OF RUN
+    T0=T1
+    T9=T2 + 1.E-6                                                     ! *** TIMEDAY AT END OF RUN PLUS PRECISION TOLERANCE
+    NN=(T2-T1)/DELSNAP+2
+
+    ! *** HIGH FREQUENCY SNAPSHOTS
+    IF( ISPPH == 100 )THEN
+      WRITE(*,'(A)')'HIGH FREQ SNAPSHOTS USED'
+      NS=0
+      WRITE(*,'(A)')'  READING SNAPSHOTS.INP'
+      OPEN(1,FILE='snapshots.inp',STATUS='UNKNOWN',ERR=999)
+      
+      CALL SKIPCOM(1,'*')
+      READ(1,*)NSHOTS
+      ALLOCATE(SHOTS(NSHOTS+1,3))
+      DO NS=1,NSHOTS
+        READ(1,*)(SHOTS(NS,K),K=1,3)
+        SHOTS(NS,3)=SHOTS(NS,3)/1440._8
+        SHOTS(NS,2)=SHOTS(NS,2)/24._8
+      ENDDO
+    999     NSHOTS=NS-1
+      IF( NSHOTS < 0 )NSHOTS=0
+      CLOSE(1)
+
+      SHOTS(NSHOTS+1,1)=T2
+
+      DO NS=1,NSHOTS
+        NN = NN+NINT(SHOTS(NS,2)/SHOTS(NS,3),8) + 1
+      ENDDO
+    ENDIF
+
+    ! *** Reallocate the SNAPSHOTS array
+    NSNAPMAX = NN+2
+100 DEALLOCATE(SNAPSHOTS)
+    
+    ALLOCATE(SNAPSHOTS(NSNAPMAX))
+
+    ! *** BUILD THE SNAPSHOT DATES
+    ISNAP=1
+    IF( NSHOTS > 0 )THEN
+      T4=SHOTS(ISNAP,1)+SHOTS(ISNAP,2)  ! *** ENDING TIME FOR HIGH FREQ
+      DO WHILE (T4 < T0)
+        ISNAP=ISNAP+1
+        IF( ISNAP > NSHOTS )THEN
+          NSHOTS=0
+          EXIT
+        ENDIF
+        T4=SHOTS(ISNAP,1)+SHOTS(ISNAP,2)
+      ENDDO
+    ENDIF
+
+    DO WHILE ( T1 <= T9 )
+      IF( ISNAP <= NSHOTS )THEN
+        IF( T1 > SHOTS(ISNAP,1) )THEN
+          ! *** ENSURE NO OVERLAPPING PERIODS
+          T3=SHOTS(ISNAP,1)
+          IF( NSNAPSHOTS >= 1 )THEN
+            DO WHILE (T3 < SNAPSHOTS(NSNAPSHOTS))
+              T3=T3+SHOTS(ISNAP,3)
+            ENDDO
+          ENDIF
+
+          T4=SHOTS(ISNAP,1)+SHOTS(ISNAP,2)  ! *** ENDING TIME FOR HI!GH FREQ
+          IF( T4 > T0 .AND. T3 < T9 )THEN
+            ! *** VALID PERIOD, SO BUILD HF SNAPSHOTS
+
+            ! *** CHECK 1ST AND LAST HF PERIOD
+            IF( T4 > T9 )T4=T2
+            DO WHILE ( T3 <= T0 )
+              T3=T3+SHOTS(ISNAP,3)
+            ENDDO
+
+            ! *** BUILD HF SNAPSHOTS
+            DO WHILE (T3 <= T4)
+              NSNAPSHOTS=NSNAPSHOTS+1
+              SNAPSHOTS(NSNAPSHOTS)=T3
+              T3=T3+SHOTS(ISNAP,3)
+            ENDDO
+          ENDIF
+          ISNAP=ISNAP+1  ! *** INCREMENT TO THE NEXT PERIOD
+
+          ! *** Synch up the regular intervals
+          IF( NSNAPSHOTS > 0 )THEN
+            DO WHILE (T1 < SNAPSHOTS(NSNAPSHOTS))
+              T1=T1+DELSNAP
+            ENDDO
+          ENDIF
+
+          IF( T1 < SHOTS(ISNAP,1) .AND. T1 >= T0 .AND. T1 <= T9 )THEN
+            NSNAPSHOTS=NSNAPSHOTS+1
+            IF( NSNAPSHOTS > NSNAPMAX )THEN
+              NSNAPMAX = NSNAPMAX + 10
+              GOTO 100
+            ENDIF
+            SNAPSHOTS(NSNAPSHOTS)=T1
+          ENDIF
+        ELSEIF( T1 >= T0 .AND. T1 <= T9 )THEN
+          NSNAPSHOTS=NSNAPSHOTS+1
+          IF( NSNAPSHOTS > NSNAPMAX )THEN
+            NSNAPMAX = NSNAPMAX + 10
+            GOTO 100
+          ENDIF
+         SNAPSHOTS(NSNAPSHOTS)=T1
+        ENDIF
+      ELSEIF( T1 >= T0 .AND. T1 <= T9 )THEN
+        NSNAPSHOTS=NSNAPSHOTS+1
+        IF( NSNAPSHOTS > NSNAPMAX )THEN
+          NSNAPMAX = NSNAPMAX + 10
+          GOTO 100
+        ENDIF
+        SNAPSHOTS(NSNAPSHOTS)=T1
+      ENDIF
+      T1=T1+DELSNAP
+    ENDDO
+  ENDIF
+ 
+  IF( ISPPH == 100) ISPPH = 1  !DHC: 2013-08-15
+
+  WRITE(*,'(A,I8)')'NSNAPSHOTS=',  NSNAPSHOTS
+  WRITE(7,*)'NSNAPSHOTS=',  NSNAPSHOTS
+  DO I=1,NSNAPSHOTS
+    WRITE(7,*)'SNAPSHOT: ',I,SNAPSHOTS(I)
+  ENDDO
+
+  ! *** ENSURE LAST SNAPSHOT SPANS THE END OF THE MODEL RUN
+  SNAPSHOTS(NSNAPSHOTS+1)=T2+1.
+  NSNAPMAX=NSNAPSHOTS
+  NSNAPSHOTS=MIN(NSNAPSHOTS,2)        ! *** NSNAPSHOTS=1 IS THE INITIAL CONDITION.  SET TO FIRST MODEL RESULTS SNAPSHOT
+
+  ! **  THREE-DIMENSIONAL HDF FORMAT GRAPHICS FILES: SUBROUTINE OUT3D
+  IF( IS3DO == 1 )THEN
+    NC3DO=NTS-(NTSPTC-(NTSPTC/NP3DO))/NFLTMT
+  ENDIF
+
+  ! **  SET CONTROLS FOR WRITING TO FILTERED, AVERAGED OR RESIDUAL
+  ! **  2D SCALAR CONTOURING AND 2D VELOCITY VECTOR PLOTTING FILES
+  ! **  RESIDUAL SALINITY, TEMPERATURE, DYE AND SEDIMENT CONCENTRATION
+  ! **  CONTOURING IN HORIZONTAL: SUBROUTINE RSALPLTH
+  DO N=1,7
+    IF( ISRSPH(N) >= 1 ) JSRSPH(N)=1
+  ENDDO
+
+  ! **  RESIDUAL VELOCITY VECTOR PLOTTING IN HORIZONTAL PLANES:
+  ! **  SUBROUTINE RVELPLTH
+  IF( ISRVPH >= 1 ) JSRVPH=1
+
+  ! **  RESIDUAL SURFACE ELEVATION PLOTTING IN HORIZONTAL PLANES:
+  ! **  SUBROUTINE RVELPLTH
+  IF( ISRPPH >= 1 ) JSRPPH=1
+  
+  ! **  RESIDUAL SCALAR FIELD CONTOURING IN VERTICAL
+  ! **  PLANES: SUBROUTINE RSALPLTV
+  DO N=1,7
+    IF( ISRSPV(N) >= 1 ) JSRSPV(N)=1
+  ENDDO
+  
+  ! **  RESIDUAL NORMAL AND TANGENTIAL VELOCITY CONTOURING AND AND
+  ! **  TANGENTIAL VELOCITY VECTOR PLOTTING IN VERTICAL PLANES:
+  ! **  SUBROUTINE RVELPLTV
+  IF( ISRVPV >= 1 ) JSRVPV=1
+
+  ! **  SET CONTROLS FOR WRITING TO DRIFTER, HARMONIC ANALYSIS,
+  ! **  RESIDUAL TRANSPORT, AND BLANCE OUTPUT FILES
+  NCPD=1
+  JSLSHA=1
+  IF( ISLSHA == 1 )THEN
+    LSLSHA=0
+    NCLSHA=NTS-NTCLSHA*NTSPTC
+  ENDIF
+  IF( ISRESTR == 1 ) JSRESTR=1
+  JSWASP=0
+  IF( ISWASP >= 1 ) JSWASP=1
+  IF( ISBAL >= 1 )THEN
+    JSBAL=1
+    JSBALO=1
+    JSBALE=1
+  ENDIF
+  JSSBAL=1
+
+  ! **  SET SOME CONSTANTS
+  JSTBXY=0
+  CTURB2=CTURB**0.667
+  CTURB3=CTURB**0.333
+  KS=KC-1
+  IF( KS == 0 ) KS=1
+  DZI=REAL(KC)
+  DZ=1./DZI
+  DZS=DZ*DZ
+  DT=TIDALP*REAL(NFLTMT)/REAL(NTSPTC)
+  DTI=1./DT
+  DT2=2.*DT
+  DTMIN=DT
+  AVCON1=2.*(1.-AVCON)*DZI*AVO
+  G=9.81
+  GPO=G*BSC
+  GI=1./G
+  GID2=.5*GI
+  PI=3.1415926535898
+  PI2=2.*PI
+  TCVP=0.0625*TIDALP/PI
+  TIMERST = (NTSPTC*ISRESTO)*DT/86400.                                                       
+
+  ! **  SET CONSTANTS FOR M2 TIDAL CYCLE HARMONIC ANALYSIS
+  IF( ISHTA > 0 )THEN
+    AC=0.
+    AS=0.
+    ACS=0.
+    TSHIFT=(TBEGIN*TCON/DT)+REAL(NTC-2)*NTSPTC
+    DO N=1,NTSPTC
+      TNT=REAL(N)+TSHIFT
+      NP=NTSPTC+N
+      WC(N)=COS(2.*PI*TNT/TPN)
+      WS(N)=SIN(2.*PI*TNT/TPN)
+      WC(NP)=WC(N)
+      WS(NP)=WS(N)
+      AC=AC + 2.*WC(N)*WC(N)
+      AS=AS + 2.*WS(N)*WS(N)
+      ACS=0.
+      WC2(N)=COS(4.*PI*TNT/TPN)
+      WS2(N)=SIN(4.*PI*TNT/TPN)
+      WC2(NP)=WC2(N)
+      WS2(NP)=WC2(N)
+      AC2=AC2 + 2.*WC2(N)*WC2(N)
+      AS2=AS2 + 2.*WS2(N)*WS2(N)
+      ACS2=0.
+    ENDDO
+    DET=AC*AS-ACS*ACS
+    AS=AS/DET
+    AC=AC/DET
+    ACS=ACS/DET
+    DET=AC2*AS2-ACS2*ACS2
+    AS2=AS2/DET
+    AC2=AC2/DET
+    ACS2=ACS2/DET
+  ENDIF
+
+  ! **  SET WEIGHTS FOR SALINITY AND TEMPERATURE BOUNDARY INTERPOLATION
+  IF( KC > 1 )THEN
+    DO K=1,KC
+      WTCI(K,1)=REAL(K-KC)/REAL(1-KC)
+      WTCI(K,2)=REAL(K-1)/REAL(KC-1)
+    ENDDO
+  ELSE
+    WTCI(1,1)=0.5
+    WTCI(1,2)=0.5
+  ENDIF
+
+  ! **  INITIALIZE ARRAYS
+  CALL AINIT
+
+  ! **  READ IN XLON AND YLAT OR UTME AND UTMN OF CELL CENTERS OF
+  ! **  CURVILINEAR PORTION OF THE  GRID
+  ISHELTERVARY = 0
+  IF( ISCLO == 1 )THEN
+    WRITE(*,'(A)')'READING LXLY.INP'
+    OPEN(1,FILE='lxly.inp',STATUS='UNKNOWN')
+    
+    CALL SKIPCOM(1,'*')
+
+    IF( ISCORV == 1 )THEN
+      DO LL=1,LVC
+        READ(1,*,ERR=3000)I,J,XLNUTME,YLTUTMN,CCUE,CCVE,CCUN,CCVN,TMPVAL,TMPCOR
+        L=LIJ(I,J)
+        DLON(L)=XLNUTME
+        DLAT(L)=YLTUTMN
+        ANG1=ATAN2(CCUN,CCUE)
+        ANG2=ATAN2(-CCVE,CCVN)
+        ANG=0.5*(ANG1+ANG2)
+        IF( SIGN(1.,ANG1) /= SIGN(1.,ANG2) )THEN
+           IF( ABS(ANG1) > (1.57) .OR. ABS(ANG2) > (1.57) )THEN
+             ! *** HANDLE THE DISCONTINUITY AT THE 180 DEGREES ANGLE
+             ANG = ANG + ACOS(-1.0)
+          ENDIF
+        END IF
+        CUE(L)=COS(ANG)
+        CVE(L)=-SIN(ANG)
+        CUN(L)=SIN(ANG)
+        CVN(L)=COS(ANG)
+        WINDSTKA(L)=TMPVAL
+        IF( LL > 2 .AND. WINDSTKA(L-1) /= TMPVAL ) ISHELTERVARY = 1
+        FCORC(L)=TMPCOR
+        DETTMP=1./( CUE(L)*CVN(L)-CUN(L)*CVE(L) )
+        IF( DETTMP == 0.0 )THEN
+          WRITE(6,6262)
+          WRITE(6,6263)IL(L),JL(L)
+          STOP
+        ENDIF
+      ENDDO
+    ELSE
+      DO LL=1,LVC
+        READ(1,*,ERR=3000)I,J,XLNUTME,YLTUTMN,CCUE,CCVE,CCUN,CCVN,TMPVAL
+        L=LIJ(I,J)
+        DLON(L)=XLNUTME
+        DLAT(L)=YLTUTMN
+        ANG1=ATAN2(CCUN,CCUE)
+        ANG2=ATAN2(-CCVE,CCVN)
+        ANG=0.5*(ANG1+ANG2)
+        TA1 = SIGN(1.,ANG1)
+        TA2 = SIGN(1.,ANG2)
+        IF( SIGN(1.,ANG1) /= SIGN(1.,ANG2) )THEN
+           IF( ABS(ANG1) > (1.57) .OR. ABS(ANG2) > (1.57) )THEN
+             ! *** HANDLE THE DISCONTINUITY AT THE 180 DEGREES ANGLE
+             ANG = ANG + acos(-1.0)                    !better way to do Pi, s!uggested by SCJ
+          ENDIF
+        END IF
+        CUE(L)=COS(ANG)
+        CVE(L)=-SIN(ANG)
+        CUN(L)=SIN(ANG)
+        CVN(L)=COS(ANG)
+        WINDSTKA(L)=TMPVAL
+        IF( LL > 2 .AND. WINDSTKA(L-1) /= TMPVAL ) ISHELTERVARY = 1
+        FCORC(L)=CF
+        DETTMP=1./( CUE(L)*CVN(L)-CUN(L)*CVE(L) )
+        IF( DETTMP == 0.0 )THEN
+          WRITE(6,6262)
+          WRITE(6,6263)IL(L),JL(L)
+          STOP
+        ENDIF
+      ENDDO
+    ENDIF
+   6262 FORMAT('  SINGULAR INVERSE TRANSFORM FROM E,N TO CURV X,Y')
+   6263 FORMAT('  I,J =',2I10/)
+    CLOSE(1)
+  ENDIF
+
+  ! *** COMPUTE CELL AREAS AND CENTROIDS
+  IF( ISWAVE >= 3 .OR. ISPD >= 2 .OR. (ISWAVE >= 1 .AND. ISWAVE <= 2 .AND. IFWAVE == 1 .AND. SWANGRP == 0) )THEN
+    ! *** COMPUTE CELL AREAS AND CENTROIDS, REQUIRES CORNERS.INP FILE
+    IF( .NOT. ALLOCATED(XCOR) ) CALL AREA_CENTRD
+  ENDIF
+
+  ! *** READ IN SEDFLUME DATA
+  IF( LSEDZLJ )THEN
+    CALL SEDIC
+  ENDIF
+                                                                  
+  ! *** READ THE DRIFTER DATA
+  IF( ISPD >= 2 ) CALL DRIFTERINP
+                                                                                    
+  ! *** SET CURVATURE FLAG
+  ISCURVATURE=.FALSE.
+  FORCSUM=0.
+  DO L=2,LA
+    FORCSUM=FORCSUM+FCORC(L)
+  ENDDO
+  IF( FORCSUM > 1.0E-6)ISCURVATURE=.TRUE.
+
+  FCORC(1)=FCORC(2)
+  FCORC(LC)=FCORC(LA)
+  GOTO 3002
+   3000 WRITE(6,3001)
+   3001 FORMAT('  READ ERROR FOR FILE LXLY.INP ')
+  STOP
+   3002 CONTINUE
+
+  ZERO=0.
+  IF( DEBUG )THEN
+    OPEN(1,FILE=OUTDIR//'LIJMAP.OUT',STATUS='UNKNOWN')
+    DO L=2,LA
+      WRITE(1,1113)L,IL(L),JL(L),ZERO
+    ENDDO
+    CLOSE(1)
+  ENDIF
+   1112 FORMAT (2I5,2F12.4,6F12.7)
+   1113 FORMAT (3I5,F10.2)
+
+  ! **  SET CORNER CELL STRESS CORRECTION
+  DO L=2,LA
+      FSCORTBCV(L)=0.0
+    ENDDO
+
+  IF( ISCORTBC >= 1 )THEN
+    DO L=2,LA
+      FSCORTBCV(L)=FSCORTBC
+    ENDDO
+  ENDIF
+
+  IF( ISCORTBC == 2 .AND. DEBUG )THEN
+    WRITE(*,'(A)')'READING CORNERC.INP'
+    OPEN(1,FILE='cornerc.inp')
+    
+    CALL SKIPCOM(1,'*')
+
+    READ(1,*)NTMP
+      DO NT=1,NTMP
+        READ(1,*)I,J,TMPVAL
+        L=LIJ(I,J)
+        FSCORTBCV(L)=TMPVAL
+      ENDDO
+    CLOSE(1)
+  ENDIF
+
+  ! **  READ SPATIAL AVERAGING MAP FOR FOOD CHAIN MODEL OUTPUT
+  IF( ISFDCH == 1 )THEN
+    DO L=1,LC
+      MFDCHZ(L)=0
+    ENDDO
+    WRITE(*,'(A)')'READING FOODCHAIN.INP'
+    OPEN(1,FILE='foodchain.inp')
+    
+    CALL SKIPCOM(1,'*')
+
+    READ(1,*)NFDCHIJ
+    DO LT=1,NFDCHIJ
+      READ(1,*)I,J,ITMPVAL
+      L=LIJ(I,J)
+      MFDCHZ(L)=ITMPVAL
+    ENDDO
+    CLOSE(1)
+
+  ELSEIF( ISFDCH == 2 )THEN
+    ! *** NEW BEDFORD APPLICATION
+    ALLOCATE(IFDCH(ICM,JCM))
+    WRITE(*,'(A)')'READING FOODCHAIN.INP'
+    OPEN(1,FILE='foodchain.inp',STATUS='OLD')
+    
+    CALL SKIPCOM(1,'*')
+
+    IFIRST=1
+    ILAST=IC
+    DO J=JC,1,-1
+      READ(1,66,IOSTAT=ISO)C,(IFDCH(I,J),I=IFIRST,ILAST)
+      IF( ISO > 0 )STOP ' READ ERROR FOR FILE FOODCHAIN.INP'
+      WRITE (7,166)JDUMY,(IFDCH(I,J),I=IFIRST,ILAST)
+    END DO
+    DO L=2,LA
+      I=IL(L)
+      J=JL(L)
+      MFDCHZ(L)=IFDCH(I,J)
+      IF( NCORENO(I,J) == 7 )MFDCHZ(L)=0
+      IF( MFDCHZ(L) > 1 )THEN
+        DO K=1,KB
+          STDOCB(L,K)=STDOCB(L,K)*0.10
+        END DO
+      END IF
+    END DO
+    CLOSE(1)
+     66   FORMAT (I3,2X,113I1)
+    166   FORMAT (1X,I3,2X,113I1)
+  ENDIF
+
+  ! **  READ IN COUNTER CLOCKWISE ANGLE FROM EAST SPECIFYING PRINCIPAL FLOOD FLOW DIRECTION
+  IF( ISTRAN(4) >= 1 .AND. ISSFLFE >= 1 )THEN
+    WRITE(*,'(A)')'READING FLDANG.INP'
+    OPEN(1,FILE='fldang.inp',STATUS='UNKNOWN')
+    DO LL=2,LA
+      READ(1,*,ERR=3130)I,J,ANGTMP1,ANGTMP2
+      L=LIJ(I,J)
+      ACCWFLD(L,1)=0.0174533*ANGTMP1
+      ACCWFLD(L,2)=0.0174533*ANGTMP2
+    ENDDO
+    CLOSE(1)
+  ENDIF
+  GOTO 3132
+   3130 WRITE(6,3131)
+   3131 FORMAT('  READ ERROR FOR FILE FLDANG.INP ')
+  STOP
+   3132 CONTINUE
+
+  ! **  SET BOUNDARY CONDITION SWITCHES
+  CALL SETBCS
+
+  ! *** ALLOCATE MEMORY FOR VARIABLE TO STORE CONCENTRATIONS AT OPEN BOUNDARIES
+  ALLOCATE(WQBCCON(NBCSOP,KCM,NTHREADS))
+  ALLOCATE(WQBCCON1(NBCSOP,KCM,NTHREADS))
+  WQBCCON  = 0.0
+  WQBCCON1 = 0.0
+
+  ! **  CALCUATE CURVATURE METRICS (NEW ADDITION)
+  DO L=1,LC
+    DYDI(L)=0.
+    DXDJ(L)=0.
+  ENDDO
+
+  ! ** DYDI
+  TMPVAL=0.
+  DO L=2,LA
+    I=IL(L)
+    J=JL(L)
+    ! *** DS-INTL - CHANGED CELL TYPE 5 TO 8
+    IF( IJCT(I-1,J) >= 1 .AND. IJCT(I-1,J) <= 8 )THEN
+      IF( IJCT(I+1,J) >= 1 .AND. IJCT(I+1,J) <= 8 )THEN
+        DYDI(L)=DYU(LEC(L))-DYU(L)
+      ELSE
+        DDYDDDX=2.*(DYP(L)-DYP(LWC(L)))/(DXP(L)+DXP(LWC(L)))
+        DYUP1=DYP(L)+0.5*DDYDDDX*DXP(L)
+        DYDI(L)=DYUP1-DYU(L)
+      END IF
+    ELSE
+      IF( IJCT(I+1,J) >= 1 .AND. IJCT(I+1,J) <= 8 )THEN
+        DDYDDDX=2.*(DYP(LEC(L))-DYP(L))/(DXP(LEC(L))+DXP(L))
+        DYUM1=DYP(L)-0.5*DDYDDDX*DXP(L)
+        DYDI(L)=DYU(L)-DYUM1
+      ELSE
+        DYDI(L)=0.0
+      END IF
+    END IF
+    IF( DYDI(L) > 1.E-7 )THEN
+      TMPVAL=1.
+    ENDIF
+  ENDDO
+
+  ! ** DXDJ
+  DO L=2,LA
+    LN=LNC(L)
+    LS=LSC(L)
+    I=IL(L)
+    J=JL(L)
+    ! *** DS-INTL - CHANGED CELL TYPE 5 TO 8
+    IF( IJCT(I,J-1) >= 1 .AND. IJCT(I,J-1) <= 8 )THEN
+      IF( IJCT(I,J+1) >= 1 .AND. IJCT(I,J+1) <= 8 )THEN
+        DXDJ(L)=DXV(LN)-DXV(L)
+      ELSE
+        DDXDDDY=2.*(DXP(L)-DXP(LS))/(DYP(L)+DYP(LS))
+        DXVLN=DXP(L)+0.5*DDXDDDY*DYP(L)
+        DXDJ(L)=DXVLN-DXV(L)
+      END IF
+    ELSE
+      IF( IJCT(I,J+1) >= 1 .AND. IJCT(I,J+1) <= 8 )THEN
+        DDXDDDY=2.*(DXP(LN)-DXP(L))/(DYP(LN)+DYP(L))
+        DXVLS=DXP(L)-0.5*DDXDDDY*DYP(L)
+        DXDJ(L)=DXV(L)-DXVLS
+      ELSE
+        DXDJ(L)=0.0
+      END IF
+    END IF
+    IF( DXDJ(L) > 1.E-7 )THEN
+      TMPVAL=1.
+    ENDIF
+  ENDDO
+  IF( TMPVAL > 0.5)ISCURVATURE=.TRUE.
+  
+  ! **********************************************************************************
+  ! *** EFDC CELL MAP LOGGING
+  WRITE(8,'(3A6,4A10,4A14)') 'I','J','L','BELV','HP','DX','DY','GRADW','GRADE','GRADS','GRADN'
+  DO L=2,LA
+    GRADW = -999.
+    GRADE = -999.
+    GRADS = -999.
+    GRADN = -999.
+    IF( SUBO(L) > 0.      ) GRADW = ( BELV(LWC(L))+HP(LWC(L) ) - ( BELV(L)+HP(L) )           )/DXU(L)
+    IF( SUBO(LEC(L)) > 0. ) GRADE = ( BELV(L)+HP(L)            - ( BELV(LEC(L))+HP(LEC(L)) ) )/DXU(LEC(L))
+    IF( SVBO(L) > 0.      ) GRADS = ( BELV(LSC(L))+HP(LSC(L) ) - ( BELV(L)+HP(L) )           )/DYV(L)
+    IF( SVBO(LNC(L)) > 0. ) GRADN = ( BELV(L)+HP(L)            - ( BELV(LNC(L))+HP(LNC(L)) ) )/DYV(LNC(L))
+    WRITE(8,'(3I6,4F10.3,4F14.5)') IL(L),JL(L),L,BELV(L),HP(L),DXP(L),DYP(L),GRADW,GRADE,GRADS,GRADN
+  ENDDO
+      
+  ! **********************************************************************************
+  ! *** ACTIVE CELL LISTS
+  ALLOCATE(LLWET(KCM,0:NDM))
+  ALLOCATE(LKWET(LCM,KCM,0:NDM))
+  LLWET=0
+  LKWET=0
+  IF( ISHDMF > 0 )THEN
+    ALLOCATE(LHDMF(LCM,KCM))
+    ALLOCATE(LLHDMF(KCM,0:NDM))
+    ALLOCATE(LKHDMF(LCM,KCM,0:NDM))
+    
+    NHDMF = LA-1
+    LHDMF = .FALSE.
+    LLHDMF = 0
+    LKHDMF = 0
+  ENDIF
+  
+  ! *** ENSURE SUM OF DZC = 1.0000 TO MACHINE PRECISION
+  DZPC=0.
+  DO K=1,KC
+    DZPC = DZPC+DZCK(K)
+  ENDDO
+  DZPC = DZPC - 1.0
+  DO K=1,KC
+    DZCK(K) = DZCK(K) + DZPC/DZI
+  ENDDO
+  
+  ! ***************************************************************************
+  ! *** BEGIN SIGMA-Z VARIABLE INITIALIZATION (SGZ)
+  ! ***
+  ! *** USE ORIGINAL DEPTH FROM DXDY (HMP) SO KSZ'S ARE CONSISTENT FOR COLD START,
+  ! ***   RESTART AND CONTINUATION RUNS
+  IF( IGRIDV > 0 )THEN
+    DO L=2,LA
+      HMP(L) = HMP(L) + SGZHPDELTA
+    ENDDO
+  ENDIF
+  
+  ! *** INITIALIZE BOTTOM LAYERS
+  IF( IGRIDV > 0 )THEN
+    ! *** READ SGZ BOTTOM ACTIVE LAYER FOR SIGMA-Z CELLS
+    IF( IGRIDV == 1 )THEN    
+      WRITE(*,'(A)')'READING SGZLAYER.INP'
+      OPEN(1,FILE='sgzlayer.inp',STATUS='UNKNOWN')
+
+      DO IS=1,4
+        READ(1,"(A80)")LINE
+      ENDDO
+
+      DO LL=2,LA
+        READ(1,*,END=1000)I,J,K
+        L = LIJ(I,J)
+        IF( L == 0 )THEN
+          WRITE(6,'(A,3I5)') '*** ERROR: BAD L INDEX IN SGZLAYER.INP, I,J,L',I,J,L
+        ENDIF
+        IF( K == 0 )THEN
+          WRITE(6,'(A,3I5)')'*** ERROR: BAD KSZ IN SGZLAYER.INP, I,J,KSZ',I,J,K
+        ENDIF
+        KSZ(L)=K
+      ENDDO
+      1000 CLOSE(1) 
+    ENDIF
+    
+    MAXTHICK = -1
+    DO L=2,LA
+      IF( HMP(L) > MAXTHICK ) MAXTHICK = HMP(L)
+    ENDDO
+
+    ! *** COMPUTE NOMINAL LAYER THICKNESSES
+    IF( IGRIDV == 2 )THEN
+      KSZ = 1
+      ALLOCATE(THICK(KCM))
+      THICK = 0.
+
+      DEPTHMIN = 0.
+      DO K=KC,1,-1
+        IF( K > (KC-KMINV) )DEPTHMIN = DEPTHMIN + DZCK(K)*MAXTHICK
+        THICK(K) = DZCK(K)*MAXTHICK
+      ENDDO
+    
+      ! *** ASSIGN LAYER THICKNESSES
+      DO L=2,LA
+        IF( HMP(L) < DEPTHMIN )THEN
+          ! *** DEFAULT LAYERING
+          DZPC = 0.
+          KSZ(L) = KC-KMINV+1
+          DO K=KSZ(L),KC
+            DZPC = DZPC+DZCK(K)
+          ENDDO
+          DO K=KSZ(L),KC
+            DZC(L,K)  = DZCK(K)/DZPC    ! *** STANDARD DZC 
+          ENDDO
+        ELSE
+          ! *** SGZ LAYERING
+          TMP = 0.
+          TMPCOR = 0.
+          DO K=KC,KSZ(L),-1
+            TMP = TMP + THICK(K)
+            IF( TMP > HMP(L)+0.00001 )THEN
+              ! *** DEFINE REMAINING BOTTOM FRACTION
+              TMP = TMP - THICK(K)
+              DZC(L,K) = (HMP(L)-TMP)/HMP(L)
+              KSZ(L) = K
+              IF( DZC(L,K) < DZCK(K)*0.2 .OR. DZC(L,K)*HMP(L) < HDRY )THEN
+                DZC(L,K+1) = DZC(L,K+1)+DZC(L,K)
+                KSZ(L) = KSZ(L)+1
+                DZC(L,K) = 0.0
+              ENDIF
+              EXIT
+            ELSE
+              DZC(L,K) = THICK(K)/HMP(L) 
+            ENDIF
+            TMPCOR = TMPCOR+DZC(L,K)
+          ENDDO
+        ENDIF
+        
+        ! *** QC 
+        TMP = ABS(1.0 - SUM(DZC(L,1:KC)))
+        IF( ABS(1.0 - SUM(DZC(L,1:KC))) > 1.E-6 )THEN    
+         TMP = SUM(DZC(L,1:KC))
+         PRINT *,' BAD DZC FOR CELL: ',L,TMP
+         STOP
+        ENDIF
+      ENDDO
+    ENDIF
+    
+    ! *** EXPORT THE LAYERING, AS COMPUTED OR ENTERED.
+    OPEN(1,FILE=OUTDIR//'SGZLAYER.OUT')
+    WRITE(1,'(A)') 'C ** SGZLAYER.OUT - LIST OF THE BOTTOMMOST ACTIVE LAYER'
+    WRITE(1,'(A)') 'C **    IGRIDV =  1 - PROVIDED BY SGZLAYER.INP,  2 - KSZ(L) CALCULATED'
+    WRITE(1,'(A)') 'C **  '
+    WRITE(1,'(A)') 'C **     I     J   KSZ'
+    DO L=2,LA
+      WRITE(1,'(4X,3I6)') IL(L),JL(L),KSZ(L)
+    ENDDO
+    CLOSE(1)
+  ENDIF
+  
+      
+  ! **  SET VERTICAL GRID DEPENDENT ARRAYS AND LAYER MASKS
+  LSGZU=.FALSE.
+  LSGZV=.FALSE.
+  DO L=2,LA
+    LW = LWC(L)
+    LE = LEC(L)
+    LS = LSC(L)
+    LN = LNC(L)
+    
+    DZPC=0.
+    DO K=KSZ(L),KC
+      DZPC = DZPC+DZCK(K)
+    ENDDO
+
+    DO K=1,KC
+      SUB3D(L,K)=SUB(L)
+      SVB3D(L,K)=SVB(L)
+      
+      ! *** INACTIVE LAYER MASK FOR CURRENT CELL 
+      IF( K < KSZ(L) )THEN
+        DZC(L,K)  = 0.0
+        LKSZ(L,K)=.TRUE.
+      ELSEIF( IGRIDV > 0 )THEN
+        ! *** SIGMA-ZED DZC 
+        LKSZ(L,K)=.FALSE.
+        IF( IGRIDV == 1 ) DZC(L,K)  = DZCK(K)/DZPC
+      ELSE
+        ! *** SIGMA STRETCH DZC
+        DZC(L,K)  = DZCK(K)/DZPC     
+        LKSZ(L,K)=.FALSE.
+      ENDIF
+
+      ! *** U FACE
+      IF( SUBO(L) > 0. )THEN
+        KM=MAX(KSZ(LW), KSZ(L))      ! *** MINUMUM ACTIVE LAYERS FOR U FACE
+        IF( K >= KM )THEN
+          LSGZU(L,K) = .TRUE.
+        ELSE
+          SUB3D(L,K)=0.0
+        ENDIF
+      ENDIF
+
+      ! *** V FACE
+      IF( SVBO(L) > 0. )THEN
+        KM=MAX(KSZ(LS), KSZ(L))      ! *** MINUMUM ACTIVE LAYERS FOR V FACE
+        IF( K >= KM )THEN
+          LSGZV(L,K) = .TRUE.
+        ELSE
+          SVB3D(L,K)=0.0
+        ENDIF
+      ENDIF
+      
+      ! *** SET FACE/LAYER FLAGS
+      SUB3D(L,K) = SUB3D(L,K)*SUB(L)
+      SVB3D(L,K) = SVB3D(L,K)*SVB(L)
+      SUB3DO(L,K) = SUB3D(L,K)
+      SVB3DO(L,K) = SVB3D(L,K)
+    ENDDO
+
+    IF( SUBO(L) < 0.5 )THEN
+      KSZU(L)=KSZ(L)
+    ELSE
+      KSZU(L)=MAX(KSZ(L),KSZ(LW))  
+    ENDIF
+    IF( SVBO(L) < 0.5 )THEN
+      KSZV(L)=KSZ(L)
+    ELSE
+      KSZV(L)=MAX(KSZ(L),KSZ(LS))  
+    ENDIF
+
+    DO K=KSZ(L),KC
+      IF( DZC(L,K) < 1.E-4 )THEN
+        WRITE(6,'(A,3I5,F10.4)') 'ERROR: BAD LAYER THICKNESS FOR L,K,KSZ,HP = ',L,K,KSZ(L),HMP(L)
+        STOP
+      ENDIF
+      DZIC(L,K) = 1./DZC(L,K)
+    ENDDO
+
+    DZIG(L,0) = 0.
+    DZIG(L,KC) = 0.
+    DO K=KSZ(L),KS
+      DZG(L,K)  = 0.5*(DZC(L,K)+DZC(L,K+1))
+      DZIG(L,K) = 1./DZG(L,K)
+    ENDDO
+
+    CDZKMK(L,KSZ(L)) = 0.
+    DO K=KSZ(L)+1,KC
+      CDZKMK(L,K) = DZIG(L,K-1)*DZIC(L,K)
+    ENDDO
+    DO K=KSZ(L),KS
+      CDZKK(L,K) = DZIC(L,K)*DZIG(L,K)
+      CDZKKP(L,K) = DZIG(L,K)*DZIC(L,K+1)
+    ENDDO
+    CDZKK(L,KC)=0.
+
+    Z(L,0)=0.
+    DO K=KSZ(L),KC
+      Z(L,K)  = Z(L,K-1) +     DZC(L,K)   ! *** TOP OF LAYER Z
+      ZZ(L,K) = Z(L,K)   - 0.5*DZC(L,K)   ! *** MID LAYER Z
+      
+      ! *** WALL PROXIMITY FUNCTION
+      IF( IFPROX == 0 )FPROX(L,K)=0.
+      IF( K /= KC )THEN
+        IF( IFPROX == 1 )FPROX(L,K) =  1./(VKC*Z(L,K)*(1.-Z(L,K)))**2
+        IF( IFPROX == 2 )FPROX(L,K) = (1./(VKC*Z(L,K))**2)            +CTE5*(1./(VKC*(1.-Z(L,K)))**2)/(CTE4+0.00001)
+      ENDIF
+    ENDDO
+
+  ENDDO
+
+  ! *** SET ACTIVE CELL LIST (WITHOUT WET/DRY CELL CONSIDERATION)
+  DO ND=1,NDM  
+    LF=2+(ND-1)*LDM  
+    LL=MIN(LF+LDM-1,LA)
+    DO K=1,KC
+      LN=0
+      DO L=LF,LL
+        IF( K < KSZ(L) )CYCLE
+        LN = LN+1
+        LKWET(LN,K,ND)=L
+      ENDDO
+      LLWET(K,ND)=LN
+    ENDDO
+  ENDDO
+  
+  IF( IGRIDV > 0 )THEN
+    IF( DEBUG ) WRITE(6,'(A)') 'TOTAL NUMBER OF ACTIVE COMPUTATIONAL CELLS PER LAYER'
+    WRITE(8,'(//,A)') 'TOTAL NUMBER OF ACTIVE COMPUTATIONAL CELLS PER LAYER'
+    DO K=KC,1,-1
+      IF( DEBUG ) WRITE(6,8000) '  Layer, LLWET:',K,SUM(LLWET(K,1:NDM))
+      WRITE(8,8000) '  Layer, LLWET:',K,SUM(LLWET(K,1:NDM))
+    ENDDO
+    WRITE(8,8000) ' '
+  ENDIF
+8000 FORMAT(A,I5,3I10)
+
+  IF( ISHDMF > 0 )THEN
+    LLHDMF = LLWET
+    LKHDMF = LKWET
+  ENDIF
+  
+  ! **********************************************************************************
+
+  ! **  READ RESTART CONDITIONS OR INITIALIZE SCALAR FIELDS
+  !     ISRESTI == 10 READS AND OLD RESTART FILE GENERATED BY
+  !     PRE SEPTEMBER 8, 1992 VERSIONS OF EFDC.FOR
+  IF( ISRESTI >= 1 )THEN
+    IF( ISRESTI == 1 ) CALL RESTIN1    !RESTART FILE OF CURRENT VERSION/070-071
+    IF( ISRESTI == 2 ) CALL RESTIN2
+    IF( ISRESTI == 10) CALL RESTIN10
+  ENDIF
+
+  ! **  INITIALIZE SALINITY FIELD IF NOT READ IN FROM RESTART FILE
+  IF( ISTRAN(1) >= 1 .AND. (ISRESTI == 0                      .OR.  &
+                           (ISRESTI >= 1 .AND. ISCI(1) == 0 ) .OR.  &
+                           (ISTOPT(1) > 1)) )THEN  ! *** PMC SINGLE LINE - FORCE IC
+    IF( ISTOPT(1) >= 1 )THEN
+      NREST=0
+      DO K=1,KC
+        DO L=2,LA
+          SAL(L,K)=SALINIT(L,K)
+          SAL1(L,K)=SALINIT(L,K)
+        ENDDO
+      ENDDO
+
+      DO K=1,KC
+        DO LL=1,NCBS
+          L=LCBS(LL)
+          CLOS(LL,K,1)=SALINIT(L,K)
+          NLOS(LL,K,1)=0
+         IF( NCSERS(LL,1) == 0 )THEN
+            SAL(L,K)=WTCI(K,1)*CBS(LL,1,1)+WTCI(K,2)*CBS(LL,2,1)
+            SAL1(L,K)=SAL(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBW
+          L=LCBW(LL)
+          CLOW(LL,K,1)=SALINIT(L,K)
+          NLOW(LL,K,1)=0
+         IF( NCSERW(LL,1) == 0 )THEN
+            SAL(L,K)=WTCI(K,1)*CBW(LL,1,1)+WTCI(K,2)*CBW(LL,2,1)
+            SAL1(L,K)=SAL(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBE
+          L=LCBE(LL)
+          CLOE(LL,K,1)=SALINIT(L,K)
+          NLOE(LL,K,1)=0
+         IF( NCSERE(LL,1) == 0 )THEN
+            SAL(L,K)=WTCI(K,1)*CBE(LL,1,1)+WTCI(K,2)*CBE(LL,2,1)
+            SAL1(L,K)=SAL(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBN
+          L=LCBN(LL)
+          CLON(LL,K,1)=SALINIT(L,K)
+          NLON(LL,K,1)=0
+         IF( NCSERN(LL,1) == 0 )THEN
+            SAL(L,K)=WTCI(K,1)*CBN(LL,1,1)+WTCI(K,2)*CBN(LL,2,1)
+            SAL1(L,K)=SAL(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+
+    ENDIF
+  ENDIF
+  9101 FORMAT(I5)
+  9102 FORMAT(3I5,12F8.2)
+
+  ! **  INITIALIZE TEMP FIELD IF NOT READ IN FROM RESTART FILE
+  IF( ISTRAN(2) >= 1 .AND. (ISRESTI == 0                      .OR.  &
+                           (ISRESTI >= 1 .AND. ISCI(2) == 0 ) .OR.  &
+                           (ISTOPT(2) > 9)) )THEN  ! *** PMC SINGLE LINE - FORCE IC
+      ! *** SPATIALLY VARYING TEMPERATURE FIELD
+      NREST=0
+      DO K=1,KC
+        DO L=2,LA
+          TEM(L,K)=TEMINIT(L,K)
+          TEM1(L,K)=TEM(L,K)
+        ENDDO
+      ENDDO
+
+      DO K=1,KC
+        DO LL=1,NCBS
+          L=LCBS(LL)
+          CLOS(LL,K,2)=TEMINIT(L,K)
+          NLOS(LL,K,2)=0
+         IF( NCSERS(LL,2) == 0 )THEN
+            TEM(L,K)=WTCI(K,1)*CBS(LL,1,2)+WTCI(K,2)*CBS(LL,2,2)
+            TEM1(L,K)=TEM(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBW
+          L=LCBW(LL)
+          CLOW(LL,K,2)=TEMINIT(L,K)
+          NLOW(LL,K,2)=0
+         IF( NCSERW(LL,2) == 0 )THEN
+            TEM(L,K)=WTCI(K,1)*CBW(LL,1,2)+WTCI(K,2)*CBW(LL,2,2)
+            TEM1(L,K)=TEM(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBE
+          L=LCBE(LL)
+          CLOE(LL,K,2)=TEMINIT(L,K)
+          NLOE(LL,K,2)=0
+         IF( NCSERE(LL,2) == 0 )THEN
+            TEM(L,K)=WTCI(K,1)*CBE(LL,1,2)+WTCI(K,2)*CBE(LL,2,2)
+            TEM1(L,K)=TEM(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBN
+          L=LCBN(LL)
+          CLON(LL,K,2)=TEMINIT(L,K)
+          NLON(LL,K,2)=0
+         IF( NCSERN(LL,2) == 0 )THEN
+            TEM(L,K)=WTCI(K,1)*CBN(LL,1,2)+WTCI(K,2)*CBN(LL,2,2)
+            TEM1(L,K)=TEM(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+
+  ENDIF
+
+  ! **  INITIALIZE TEMPERATURE BC IF NOT READ IN FROM RESTART FILE
+  !     AND CONSTANT INITIAL CONDITION IS USED
+  IF( ISRESTI == 0 .AND. ISTRAN(2) >= 1 )THEN
+    IF( ISTOPT(2) == 0 )THEN
+      ! *** CONSTANT TEMPERATURE FIELD
+      M=2
+      DO K=1,KC
+        DO LL=1,NCBS
+          CLOS(LL,K,M)=TEMO
+          NLOS(LL,K,M)=0
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBW
+          CLOW(LL,K,M)=TEMO
+          NLOW(LL,K,M)=0
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBE
+          CLOE(LL,K,M)=TEMO
+          NLOE(LL,K,M)=0
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBN
+          CLON(LL,K,M)=TEMO
+          NLON(LL,K,M)=0
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! *** RESET IC OPTION, IF USED
+  IF( ISTOPT(2) > 9)ISTOPT(2)=ISTOPT(2)-10 ! PMC SINGLE LINE
+  !
+  ! **  INITIALIZE DYE FIELD IF NOT READ IN FROM RESTART FILE
+  !
+  IF( ISTRAN(3) >= 1 .AND. (ISRESTI == 0                      .OR.  &
+                           (ISRESTI >= 1 .AND. ISCI(3) == 0 ) .OR.  &
+                           (ISTOPT(3) > 1)) )THEN  ! *** PMC SINGLE LINE - FORCE IC
+    IF( ISTOPT(3) >= 1 )THEN
+      ! *** SPATIALLY VARIABLE DYE FIELD
+      NREST=0
+      DO K=1,KC
+        DO L=2,LA
+          DYE(L,K)=DYEINIT(L,K)
+          DYE1(L,K)=DYE(L,K)
+        ENDDO
+      ENDDO
+
+      DO K=1,KC
+        DO LL=1,NCBS
+          L=LCBS(LL)
+          CLOS(LL,K,3)=DYEINIT(L,K)
+          NLOS(LL,K,3)=0
+         IF( NCSERS(LL,3) == 0 )THEN
+            DYE(L,K)=WTCI(K,1)*CBS(LL,1,3)+WTCI(K,2)*CBS(LL,2,3)
+            DYE1(L,K)=DYE(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBW
+          L=LCBW(LL)
+          CLOW(LL,K,3)=DYEINIT(L,K)
+          NLOW(LL,K,3)=0
+         IF( NCSERW(LL,3) == 0 )THEN
+            DYE(L,K)=WTCI(K,1)*CBW(LL,1,3)+WTCI(K,2)*CBW(LL,2,3)
+            DYE1(L,K)=DYE(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBE
+          L=LCBE(LL)
+          CLOE(LL,K,3)=DYEINIT(L,K)
+          NLOE(LL,K,3)=0
+         IF( NCSERE(LL,3) == 0 )THEN
+            DYE(L,K)=WTCI(K,1)*CBE(LL,1,3)+WTCI(K,2)*CBE(LL,2,3)
+            DYE1(L,K)=DYE(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBN
+          L=LCBN(LL)
+          CLON(LL,K,3)=DYEINIT(L,K)
+          NLON(LL,K,3)=0
+         IF( NCSERN(LL,3) == 0 )THEN
+            DYE(L,K)=WTCI(K,1)*CBN(LL,1,3)+WTCI(K,2)*CBN(LL,2,3)
+            DYE1(L,K)=DYE(L,K)
+          ENDIF
+        ENDDO
+      ENDDO
+
+    ENDIF
+  ENDIF
+
+  ! **  INITIALIZE DYE BC IF NOT READ IN FROM RESTART FILE
+  ! **  AND CONSTANT INITIAL CONDITIONS ARE USED
+  IF( (ISRESTI == 0 .AND. ISTRAN(3) >= 1 ) .OR.  &
+      (ISRESTI >= 1 .AND. ISCI(3) == 0 ) )THEN     ! *** PMC SINGLE LINE
+    IF( ISTOPT(3) == 0 )THEN
+      M=3
+      DO K=1,KC
+        DO LL=1,NCBS
+          CLOS(LL,K,M)=0.
+          NLOS(LL,K,M)=0
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBW
+          CLOW(LL,K,M)=0.
+          NLOW(LL,K,M)=0
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBE
+          CLOE(LL,K,M)=0.
+          NLOE(LL,K,M)=0
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBN
+          CLON(LL,K,M)=0.
+          NLON(LL,K,M)=0
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! **  INITIALIZE TOX AND BC IF NOT READ IN FROM RESTART FILE
+  ! **  AND VARIABLE INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(5) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(5) == 1 )THEN
+    DO NT=1,NTOX
+      IF( ITXINT(NT) == 1 .OR. ITXINT(NT) == 3 )THEN
+        M=4+NT
+        DO K=1,KC
+          DO L=2,LA
+            TOX(L,K,NT)=TOXINIT(L,K,NT)
+            TOX1(L,K,NT)=TOX(L,K,NT)
+          ENDDO
+        ENDDO
+
+        DO K=1,KC
+          DO LL=1,NCBS
+           L=LCBS(LL)
+           CLOS(LL,K,M)=TOXINIT(L,K,NT)
+           NLOS(LL,K,M)=0
+          IF( NCSERS(LL,M) == 0 )THEN
+           TOX(L,K,NT)=WTCI(K,1)*CBS(LL,1,M)+WTCI(K,2)*CBS(LL,2,M)
+           TOX1(L,K,NT)=TOX(L,K,NT)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBW
+           L=LCBW(LL)
+           CLOW(LL,K,M)=TOXINIT(L,K,NT)
+           NLOW(LL,K,M)=0
+          IF( NCSERW(LL,M) == 0 )THEN
+           TOX(L,K,NT)=WTCI(K,1)*CBW(LL,1,M)+WTCI(K,2)*CBW(LL,2,M)
+           TOX1(L,K,NT)=TOX(L,K,NT)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBE
+           L=LCBE(LL)
+           CLOE(LL,K,M)=TOXINIT(L,K,NT)
+           NLOE(LL,K,M)=0
+          IF( NCSERE(LL,3) == 0 )THEN
+           TOX(L,K,NT)=WTCI(K,1)*CBE(LL,1,M)+WTCI(K,2)*CBE(LL,2,M)
+           TOX1(L,K,NT)=TOX(L,K,NT)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBN
+           L=LCBN(LL)
+           CLON(LL,K,M)=TOXINIT(L,K,NT)
+           NLON(LL,K,M)=0
+          IF( NCSERN(LL,M) == 0 )THEN
+           TOX(L,K,NT)=WTCI(K,1)*CBN(LL,1,M)+WTCI(K,2)*CBN(LL,2,M)
+           TOX1(L,K,NT)=TOX(L,K,NT)
+           ENDIF
+          ENDDO
+        ENDDO
+
+      ENDIF
+    ENDDO
+  ENDIF
+
+  ! **  INITIALIZE TOX BC IF NOT READ IN FROM RESTART FILE
+  ! **  AND CONSTANT INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(5) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(5) == 1 )THEN
+    DO NT=1,NTOX
+      IF( ITXINT(NT) == 0 .OR. ITXINT(NT) == 2 )THEN
+        M=4+NT
+        DO K=1,KC
+          DO LL=1,NCBS
+            CLOS(LL,K,M)=TOXINTW(NT)
+            NLOS(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBW
+            CLOW(LL,K,M)=TOXINTW(NT)
+            NLOW(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBE
+            CLOE(LL,K,M)=TOXINTW(NT)
+            NLOE(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBN
+            CLON(LL,K,M)=TOXINTW(NT)
+            NLON(LL,K,M)=0
+          ENDDO
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDIF
+
+  ! **  INITIALIZE TOX BED IF NOT READ IN FROM RESTART FILE
+  ! **  AND VARIABLE INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(5) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(5) == 1 )THEN
+    DO NT=1,NTOX
+      IF( ITXINT(NT) == 2 .OR. ITXINT(NT) == 3 )THEN
+        DO K=1,KB
+          DO L=2,LA
+            TOXB(L,K,NT)=TOXBINIT(L,K,NT)
+            TOXB1(L,K,NT)=TOXB(L,K,NT)
+          ENDDO
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDIF
+
+  ! **  INITIALIZE SED AND BC IF NOT READ IN FROM RESTART FILE
+  ! **  AND VARIABLE INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(6) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(6) == 1 )THEN
+    IF( ISEDINT == 1 .OR. ISEDINT == 3 )THEN
+      DO NS=1,NSED
+        M=4+NTOX+NS
+        DO K=1,KC
+          DO L=2,LA
+            SED(L,K,NS)=SEDINIT(L,K,NS)
+            SED1(L,K,NS)=SED(L,K,NS)
+          ENDDO
+        ENDDO
+
+        DO K=1,KC
+          DO LL=1,NCBS
+           L=LCBS(LL)
+           CLOS(LL,K,M)=SEDINIT(L,K,NS)
+           NLOS(LL,K,M)=0
+          IF( NCSERS(LL,M) == 0 )THEN
+           SED(L,K,NS)=WTCI(K,1)*CBS(LL,1,M)+WTCI(K,2)*CBS(LL,2,M)
+           SED1(L,K,NS)=SED(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBW
+           L=LCBW(LL)
+           CLOW(LL,K,M)=SEDINIT(L,K,NS)
+           NLOW(LL,K,M)=0
+          IF( NCSERW(LL,M) == 0 )THEN
+           SED(L,K,NS)=WTCI(K,1)*CBW(LL,1,M)+WTCI(K,2)*CBW(LL,2,M)
+           SED1(L,K,NS)=SED(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBE
+           L=LCBE(LL)
+           CLOE(LL,K,M)=SEDINIT(L,K,NS)
+           NLOE(LL,K,M)=0
+          IF( NCSERE(LL,3) == 0 )THEN
+           SED(L,K,NS)=WTCI(K,1)*CBE(LL,1,M)+WTCI(K,2)*CBE(LL,2,M)
+           SED1(L,K,NS)=SED(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBN
+           L=LCBN(LL)
+           CLON(LL,K,M)=SEDINIT(L,K,NS)
+           NLON(LL,K,M)=0
+          IF( NCSERN(LL,M) == 0 )THEN
+           SED(L,K,NS)=WTCI(K,1)*CBN(LL,1,M)+WTCI(K,2)*CBN(LL,2,M)
+           SED1(L,K,NS)=SED(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+
+      ENDDO
+
+    ENDIF
+  ENDIF
+  IF( ISTRAN(6) > 0 )DEALLOCATE(SEDINIT)
+  
+  ! **  INITIALIZE SED BC IF NOT READ IN FROM RESTART FILE AND
+  ! **  CONSTANT INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(6) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(6) == 1 )THEN
+    IF( ISEDINT == 0 .OR. ISEDINT == 2 )THEN
+      DO NS=1,NSED
+        M=4+NTOX+NS
+        DO K=1,KC
+          DO LL=1,NCBS
+            CLOS(LL,K,M)=SEDO(NS)
+            NLOS(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBW
+            CLOW(LL,K,M)=SEDO(NS)
+            NLOW(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBE
+            CLOE(LL,K,M)=SEDO(NS)
+            NLOE(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBN
+            CLON(LL,K,M)=SEDO(NS)
+            NLON(LL,K,M)=0
+          ENDDO
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! **  INITIALIZE SED BED IF NOT READ IN FROM RESTART FILE
+  ! **  AND VARIABLE INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(6) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(6) == 1 )THEN
+    IF( ISEDINT == 2 .OR. ISEDINT == 3 )THEN
+      DO NS=1,NSED
+        DO K=1,KB
+          DO L=2,LA
+            SEDB(L,K,NS)=SEDBINIT(L,K,NS)
+            SEDB1(L,K,NS)=SEDB(L,K,NS)
+          ENDDO
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! **  INITIALIZE SND AND BC IF NOT READ IN FROM RESTART FILE
+  ! **  AND VARIABLE INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(7) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(7) == 1 )THEN
+    IF( ISEDINT == 1 .OR. ISEDINT == 3 )THEN
+      DO NS=1,NSND
+        M=4+NTOX+NSED+NS
+        DO K=1,KC
+          DO L=2,LA
+            SND(L,K,NS)=SNDINIT(L,K,NS)
+            SND1(L,K,NS)=SND(L,K,NS)
+          ENDDO
+        ENDDO
+
+        DO K=1,KC
+          DO LL=1,NCBS
+           L=LCBS(LL)
+           CLOS(LL,K,M)=SNDINIT(L,K,NS)
+           NLOS(LL,K,M)=0
+          IF( NCSERS(LL,M) == 0 )THEN
+           SND(L,K,NS)=WTCI(K,1)*CBS(LL,1,M)+WTCI(K,2)*CBS(LL,2,M)
+           SND1(L,K,NS)=SND(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBW
+           L=LCBW(LL)
+           CLOW(LL,K,M)=SNDINIT(L,K,NS)
+           NLOW(LL,K,M)=0
+          IF( NCSERW(LL,M) == 0 )THEN
+           SND(L,K,NS)=WTCI(K,1)*CBW(LL,1,M)+WTCI(K,2)*CBW(LL,2,M)
+           SND1(L,K,NS)=SND(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBE
+           L=LCBE(LL)
+           CLOE(LL,K,M)=SNDINIT(L,K,NS)
+           NLOE(LL,K,M)=0
+          IF( NCSERE(LL,3) == 0 )THEN
+           SND(L,K,NS)=WTCI(K,1)*CBE(LL,1,M)+WTCI(K,2)*CBE(LL,2,M)
+           SND1(L,K,NS)=SND(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBN
+           L=LCBN(LL)
+           CLON(LL,K,M)=SNDINIT(L,K,NS)
+           NLON(LL,K,M)=0
+          IF( NCSERN(LL,M) == 0 )THEN
+           SND(L,K,NS)=WTCI(K,1)*CBN(LL,1,M)+WTCI(K,2)*CBN(LL,2,M)
+           SND1(L,K,NS)=SND(L,K,NS)
+           ENDIF
+          ENDDO
+        ENDDO
+
+      ENDDO
+    ENDIF
+  ENDIF
+  IF( ISTRAN(7) > 0 )DEALLOCATE(SNDINIT)
+  
+  ! **  INITIALIZE SND BC IF NOT READ IN FROM RESTART FILE AND
+  ! **  CONSTANT INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(7) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(7) == 1 )THEN
+    IF( ISEDINT == 0 .OR. ISEDINT == 2 )THEN
+      DO NX=1,NSND
+        NS=NSED+NX
+        M=4+NTOX+NSED+NX
+        DO K=1,KC
+          DO LL=1,NCBS
+            CLOS(LL,K,M)=SEDO(NS)
+            NLOS(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBW
+            CLOW(LL,K,M)=SEDO(NS)
+            NLOW(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBE
+            CLOE(LL,K,M)=SEDO(NS)
+            NLOE(LL,K,M)=0
+          ENDDO
+        ENDDO
+        DO K=1,KC
+          DO LL=1,NCBN
+            CLON(LL,K,M)=SEDO(NS)
+            NLON(LL,K,M)=0
+          ENDDO
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! **  INITIALIZE SND BED IF NOT READ IN FROM RESTART FILE
+  ! **  AND VARIABLE INITIAL CONDITIONS ARE USED
+  IISTMP=1
+  IF( ISRESTI == 0 ) IISTMP=0
+  IF( ISRESTI >= 1 .AND. ISCI(7) == 0 ) IISTMP=0
+  IF( IISTMP == 0 .AND. ISTRAN(7) == 1 )THEN
+    IF( ISEDINT == 2 .OR. ISEDINT == 3 )THEN
+      DO NX=1,NSND
+        DO K=1,KB
+          DO L=2,LA
+            SNDB(L,K,NX)=SNDBINIT(L,K,NX)
+            SNDB1(L,K,NX)=SNDB(L,K,NX)
+          ENDDO
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! *** INITIALIZE SEDIMENT BED
+  IF( ISTRAN(6) >= 1 .OR. ISTRAN(7) >= 1 ) CALL BEDINIT
+  IF( ISTRAN(6) > 0 )DEALLOCATE(SEDBINIT)
+  IF( ISTRAN(7) > 0 )DEALLOCATE(SNDBINIT)
+  
+  ! *** SET THE WET CELL LIST
+  LAWET = 0
+  LADRY=0
+  DO L=2,LA
+    LAWET = LAWET+1
+    LWET(LAWET)=L
+  ENDDO
+  LDMWET = INT(LAWET/NTHREADS)+1
+  LDMDRY = 0
+
+  ! **  INITIALIZE SFL IF( ISRESTI == 0.AND ISTRAN(4) >= 1 )
+  IF( ISRESTI == 0 .AND. ISTRAN(4) >= 1 )THEN
+    IF( ISTOPT(4) == 11 )THEN
+      DO K=1,KC
+        DO L=1,LC
+          SFL(L,K)=SFLINIT(L,K)
+          SFL2(L,K)=SFLINIT(L,K)
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBS
+          L=LCBS(LL)
+          CLOS(LL,K,5)=SALINIT(L,K)
+          NLOS(LL,K,5)=0
+          SFL(L,K)=WTCI(K,1)*CBS(LL,1,5)+WTCI(K,2)*CBS(LL,2,5)
+          SFL2(L,K)=SFL(L,K)
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBW
+          L=LCBW(LL)
+          CLOW(LL,K,5)=SALINIT(L,K)
+          NLOW(LL,K,5)=0
+          SFL(L,K)=WTCI(K,1)*CBW(LL,1,5)+WTCI(K,2)*CBW(LL,2,5)
+          SFL2(L,K)=SFL(L,K)
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBE
+          L=LCBE(LL)
+          CLOE(LL,K,5)=SALINIT(L,K)
+          NLOE(LL,K,5)=0
+          SFL(L,K)=WTCI(K,1)*CBE(LL,1,5)+WTCI(K,2)*CBE(LL,2,5)
+          SFL2(L,K)=SFL(L,K)
+        ENDDO
+      ENDDO
+      DO K=1,KC
+        DO LL=1,NCBN
+          L=LCBN(LL)
+          CLON(LL,K,5)=SALINIT(L,K)
+          NLON(LL,K,5)=0
+          SFL(L,K)=WTCI(K,1)*CBN(LL,1,5)+WTCI(K,2)*CBN(LL,2,5)
+          SFL2(L,K)=SFL(L,K)
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+  
+  ! **  ACTIVATE DYE TRACER CONTINUITY CHECK
+  IF( ISMMC == 1 )THEN
+    DO K=1,KC
+      DO L=1,LC
+        DYE(L,K)=1.
+        DYE1(L,K)=1.
+      ENDDO
+    ENDDO
+    DO K=1,KC
+      DO LL=1,NCBS
+        CLOS(LL,K,3)=1.
+        NLOS(LL,K,3)=0
+      ENDDO
+      DO LL=1,NCBW
+        CLOW(LL,K,3)=1.
+        NLOW(LL,K,3)=0
+      ENDDO
+      DO LL=1,NCBE
+        CLOE(LL,K,3)=1.
+        NLOE(LL,K,3)=0
+      ENDDO
+      DO LL=1,NCBN
+        CLON(LL,K,3)=1.
+        NLON(LL,K,3)=0
+      ENDDO
+    ENDDO
+  ENDIF
+
+  ! *** SET 3D CELL FACE CONSTANTS
+  FSGZU=1.
+  FSGZV=1.
+  DO L=2,LA
+    LW=LWC(L)
+    LS=LSC(L)
+
+    DO K=1,KC
+      
+      ! *** U FACE
+      IF( SUBO(L) > 0. )THEN
+        KM=MAX(KSZ(LW), KSZ(L))      ! *** MINUMUM ACTIVE LAYERS FOR U FACE
+        IF( K >= KM )THEN
+          IF( IGRIDV > 0 )THEN
+            IF( KSZ(LW) > KSZ(L) )THEN
+              SGZU(L,K)  = DZC(LW,K)
+            ELSE
+              SGZU(L,K)  = DZC(L,K)
+            ENDIF
+          ELSE
+            SGZU(L,K)  = MAX(DZC(LW,K),DZC(L,K))
+          ENDIF
+        ENDIF
+      ENDIF
+
+      ! *** V FACE
+      IF( SVBO(L) > 0. )THEN
+        KM=MAX(KSZ(LS), KSZ(L))      ! *** MINUMUM ACTIVE LAYERS FOR V FACE
+        IF( K >= KM )THEN
+          IF( IGRIDV > 0 )THEN
+            IF( KSZ(LS) > KSZ(L) )THEN
+              SGZV(L,K)  = DZC(LS,K)
+            ELSE
+              SGZV(L,K)  = DZC(L,K)
+            ENDIF
+          ELSE
+            SGZV(L,K)  = MAX(DZC(LS,K),DZC(L,K))
+          ENDIF
+        ENDIF
+      ENDIF
+    ENDDO
+
+    IF( IGRIDV == 2 )THEN
+      IF( SUBO(L) > 0.5 )THEN
+        TMP = SUM(SGZU(L,1:KC))
+        DO K=1,KC
+          SGZU(L,K) = SGZU(L,K) / TMP
+        ENDDO
+      ENDIF
+      
+      IF( SVBO(L) > 0.5 )THEN
+        TMP = SUM(SGZV(L,1:KC))
+        DO K=1,KC
+          SGZV(L,K) = SGZV(L,K) / TMP
+        ENDDO
+      ENDIF
+      
+      ! *** QC
+      IF( SUB(L) > 0. .AND. ABS(1.0 - SUM(SGZU(L,1:KC))) > 1.E-5 )THEN
+          PRINT *,'BAD SGZU:  L, KSZ, SUM(SGZU(L,1:KC))',L,KSZ(L),SUM(SGZU(L,1:KC))
+          DO K=1,KC
+            PRINT *,K,SGZU(L,K),DZC(L,K)
+          ENDDO
+          STOP ' BAD SGZU'
+        ENDIF
+        IF( SVB(L) > 0. .AND. ABS(1.0 - SUM(SGZV(L,1:KC))) > 1.E-5 )THEN
+          PRINT *,'BAD SGZV:  L, KSZ, SUM(SGZV(L,1:KC))',L,KSZ(L),SUM(SGZV(L,1:KC))
+          DO K=1,KC
+            PRINT *,K,SGZU(L,K),DZC(L,K)
+          ENDDO
+          STOP ' BAD SGZV'
+        ENDIF
+        ! *** END QC
+    ENDIF
+    
+    ! *** CELL FACE/INTERFACE CONSTANTS
+    DO K=KSZU(L),KS
+      DZGU(L,K) = 0.5*(SGZU(L,K)+SGZU(L,K+1))
+      IF( SUBO(L) > 0. )THEN
+        CDZFU(L,K) = SGZU(L,K)*SGZU(L,K+1)/(SGZU(L,K)+SGZU(L,K+1))
+        CDZUU(L,K) = -SGZU(L,  K)/(SGZU(L,K)+SGZU(L,K+1))
+        CDZLU(L,K) = -SGZU(L,K+1)/(SGZU(L,K)+SGZU(L,K+1))
+      ENDIF
+    ENDDO
+    DO K=KSZV(L),KS
+      DZGV(L,K) = 0.5*(SGZV(L,K)+SGZV(L,K+1))
+      IF( SVBO(L) > 0. )THEN
+        CDZFV(L,K) = SGZV(L,K)*SGZV(L,K+1)/(SGZV(L,K)+SGZV(L,K+1))
+        CDZUV(L,K) = -SGZV(L,K)  /(SGZV(L,K)+SGZV(L,K+1))
+        CDZLV(L,K) = -SGZV(L,K+1)/(SGZV(L,K)+SGZV(L,K+1))
+      ENDIF
+    ENDDO
+
+    ! *** U FACE
+    IF( SUBO(L) > 0. )THEN
+      CDZRU(L,KSZU(L)) = SGZU(L,KSZU(L))-1.
+      CDZDU(L,KSZU(L)) = SGZU(L,KSZU(L))
+      DO K=KSZU(L)+1,KS
+        KM = MAX(KSZ(LW), KSZ(L))      ! *** MINIMUM ACTIVE LAYERS FOR U FACE
+        IF( K >= KM )THEN
+          CDZRU(L,K) = CDZRU(L,K-1)+SGZU(L,K)
+          CDZDU(L,K) = CDZDU(L,K-1)+SGZU(L,K)
+        ENDIF
+      ENDDO
+    ENDIF
+
+    ! *** V FACE
+    IF( SVBO(L) > 0. )THEN
+      CDZRV(L,KSZV(L)) = SGZV(L,KSZV(L))-1.
+      CDZDV(L,KSZV(L)) = SGZV(L,KSZV(L))
+      DO K=KSZV(L)+1,KS
+        KM = MAX(KSZ(LS), KSZ(L))      ! *** MINIMUM ACTIVE LAYERS FOR V FACE
+        IF( K >= KM )THEN
+          CDZRV(L,K) = CDZRV(L,K-1)+SGZV(L,K)
+          CDZDV(L,K) = CDZDV(L,K-1)+SGZV(L,K)
+        ENDIF
+      ENDDO
+    ENDIF
+
+    DO K=1,KS
+      ! *** U FACE
+      IF( SUBO(L) > 0. )THEN
+        CDZRU(L,K) = CDZRU(L,K)*DZGU(L,K)*CDZLU(L,KSZU(L))
+        CDZMU(L,K) = 0.5*SGZU(L,K)*SGZU(L,K+1)
+      ENDIF
+
+      ! *** V FACE
+      IF( SVBO(L) > 0. )THEN
+        CDZRV(L,K) = CDZRV(L,K)*DZGV(L,K)*CDZLV(L,KSZV(L))
+        CDZMV(L,K) = 0.5*SGZV(L,K)*SGZV(L,K+1)
+      ENDIF
+    ENDDO
+
+  ENDDO
+
+  ! *** SET LIST OF CELLS WHOSE ACTIVE LAYER COUNT IS 1
+  LDMSGZ1 = 0
+  IF( IGRIDV > 0 )THEN
+    ALLOCATE(LSGZ1(LCM))
+    LSGZ1=0
+    DO L=2,LA
+      IF( KSZ(L) == KC )THEN
+        LASGZ1 = LASGZ1+1
+        LSGZ1(LASGZ1)=L
+      ENDIF
+    ENDDO
+    LDMSGZ1 = INT(LASGZ1/NDM)+1
+  ENDIF
+  
+  !*** TREAT SGZ CELLS WHOSE KSZ=KC (i.e. KMIN=1)
+  ALLOCATE(LLWETZ(KCM,0:NDM))
+  ALLOCATE(LKWETZ(LCM,KCM,0:NDM))
+  LLWETZ=0
+  LKWETZ=0
+
+  DO ND=1,NDM
+    DO K=1,KS
+      LLWETZ(K,ND) = LLWET(K,ND)
+      DO LP=1,LLWET(K,ND)
+        LKWETZ(LP,K,ND) = LKWET(LP,K,ND)  
+      ENDDO 
+    ENDDO
+      
+    LLWETZ(KC,ND) = LLWET(KS,ND)
+    DO LP=1,LLWET(KS,ND)
+      LKWETZ(LP,KC,ND) = LKWET(LP,KS,ND)  
+    ENDDO
+  ENDDO
+    
+  ! *** CALCULATE CONSTANT HORIZONTAL SPATIAL ARRAYS
+  DO L=2,LA
+    DXYU(L)=DXU(L)*DYU(L)
+    DXYV(L)=DXV(L)*DYV(L)
+    DXYP(L)=STCAP(L)*DXP(L)*DYP(L)
+    DXIU(L)=1./DXU(L)
+    DYIU(L)=1./DYU(L)
+    DXIV(L)=1./DXV(L)
+    DYIV(L)=1./DYV(L)
+    DXYIP(L)=1./(STCAP(L)*DXP(L)*DYP(L))
+    DXYIU(L)=1./(DXU(L)*DYU(L))
+    DXYIV(L)=1./(DXV(L)*DYV(L))
+    HRU(L)=SUB(L)*HMU(L)*DYU(L)*DXIU(L)
+    HRV(L)=SVB(L)*HMV(L)*DXV(L)*DYIV(L)
+    HRUO(L)=SUBO(L)*DYU(L)*DXIU(L)
+    HRVO(L)=SVBO(L)*DXV(L)*DYIV(L)
+    SBX(L)=0.5*SUB(L)*DYU(L)
+    SBY(L)=0.5*SVB(L)*DXV(L)
+    SBXO(L)=0.5*SUBO(L)*DYU(L)
+    SBYO(L)=0.5*SVBO(L)*DXV(L)
+  ENDDO
+  
+  ! *** DETERMINE FSGZU/FSGZV FOR GROSS MOMENTUM
+  DO L=2,LA
+    LW=LWC(L)
+    LS=LSC(L)
+    DO K=1,KC
+      IF( SGZU(L,K) > 0. )THEN
+        FSGZU(L,K) = 1./SGZU(L,K)
+      ELSE
+        FSGZU(L,K) = 0.
+      ENDIF
+      IF( SGZV(L,K) > 0. )THEN
+        FSGZV(L,K) = 1./SGZV(L,K)
+      ELSE
+        FSGZV(L,K) = 0.
+      ENDIF
+    ENDDO
+  ENDDO
+
+  ! *** THIRD PASS AT CELL CONSTANTS
+  DO L=2,LA
+    LW=LWC(L)
+    LE=LEC(L)
+    LS=LSC(L)
+    LN=LNC(L)
+    
+    IF( IGRIDV > 0 )THEN
+      ! *** CELL INTERFACE METRICS
+      FRACK = MIN(0.1*MAXTHICK*DZ,.25)
+      
+      BELVW(L) = BELV(L)
+      BELVE(L) = BELV(L)
+      BELVS(L) = BELV(L)
+      BELVN(L) = BELV(L)
+      
+      KSZW(L) = KSZ(L)
+      KSZE(L) = KSZ(L)
+      KSZS(L) = KSZ(L)
+      KSZN(L) = KSZ(L)
+      
+      DO K=KSZ(L),KC
+        SGZW(L,K) = DZC(L,K)
+        SGZE(L,K) = DZC(L,K)
+        SGZS(L,K) = DZC(L,K)
+        SGZN(L,K) = DZC(L,K)
+
+        SGZKW(K,L) = DZC(L,K)
+        SGZKE(K,L) = DZC(L,K)
+        SGZKS(K,L) = DZC(L,K)
+        SGZKN(K,L) = DZC(L,K)
+        
+        ! *** TOP OF LAYER
+        ZW(L,K) = Z(L,K) 
+        ZE(L,K) = Z(L,K)
+        ZS(L,K) = Z(L,K)
+        ZN(L,K) = Z(L,K)
+
+        ! *** MIDDLE OF LAYER
+        ZZW(K,L) = ZZ(L,K)
+        ZZE(K,L) = ZZ(L,K)
+        ZZS(K,L) = ZZ(L,K)
+        ZZN(K,L) = ZZ(L,K)
+      ENDDO
+      
+      IF( SUBO(L) > 0. )THEN
+        KSZW(L) = KSZU(L) 
+        IF( KSZ(LW) > KSZ(L) )THEN
+          BELVW(L) = BELV(LW)
+          !BELVW(L) = MAX(BELV(LW)-FRACK,BELV(L))
+          DO K=1,KC
+            SGZW(L,K)  = DZC(LW,K)
+            SGZKW(K,L) = DZC(LW,K)
+            ZW(L,K)    = Z(LW,K)
+            ZZW(K,L)   = ZZ(LW,K)
+          ENDDO
+        ENDIF
+        IF( IGRIDV == 2 .AND. KSZ(LW) == KSZ(L) .AND. KSZ(L) < KC-KMINV+1 )THEN
+          IF( BELV(L) >= BELV(LW) )THEN
+            LL = L
+          ELSE
+            LL = LW
+          ENDIF
+          BELVW(L) = BELV(LL)
+          DO K=1,KC
+            SGZW(L,K)  = DZC(LL,K)
+            SGZKW(K,L) = DZC(LL,K)
+            ZW(L,K)    = Z(LL,K)
+            ZZW(K,L)   = ZZ(LL,K)
+          ENDDO
+        ENDIF
+      ENDIF
+
+      IF( SUBO(LE) > 0. )THEN
+        KSZE(L)=KSZU(LE)
+        IF( KSZ(LE) > KSZ(L) )THEN
+          BELVE(L) = BELV(LE)
+          !BELVE(L) = MAX(BELV(LE)-FRACK,BELV(L))
+          DO K=1,KC
+            SGZE(L,K)  = DZC(LE,K)
+            SGZKE(K,L) = DZC(LE,K)
+            ZE(L,K)    = Z(LE,K)
+            ZZE(K,L)   = ZZ(LE,K)
+          ENDDO
+        ELSEIF( IGRIDV == 2 .AND. KSZ(LE) == KSZ(L) .AND. KSZ(L) < KC-KMINV+1 )THEN
+          IF( BELV(L) >= BELV(LE) )THEN
+            LL = L
+          ELSE
+            LL = LE
+          ENDIF
+          BELVE(L) = BELV(LL)
+          DO K=1,KC
+            SGZE(L,K)  = DZC(LL,K)
+            SGZKE(K,L) = DZC(LL,K)
+            ZE(L,K)    = Z(LL,K)
+            ZZE(K,L)   = ZZ(LL,K)
+          ENDDO
+        ENDIF
+      ENDIF
+
+      IF( SVBO(L) > 0. )THEN
+        KSZS(L)=KSZV(L)
+        IF( KSZ(LS) > KSZ(L) )THEN
+          BELVS(L) = BELV(LS)
+          !BELVS(L) = MAX(BELV(LS)-FRACK,BELV(L))
+          DO K=1,KC
+            SGZS(L,K)  = DZC(LS,K)
+            SGZKS(K,L) = DZC(LS,K)
+            ZS(L,K)    = Z(LS,K)
+            ZZS(K,L)   = ZZ(LS,K)
+          ENDDO
+        ELSEIF( IGRIDV == 2 .AND. KSZ(LS) == KSZ(L) .AND. KSZ(L) < KC-KMINV+1 )THEN
+          IF( BELV(L) >= BELV(LS) )THEN
+            LL = L
+          ELSE
+            LL = LS
+          ENDIF
+          BELVS(L) = BELV(LL)
+          DO K=1,KC
+            SGZS(L,K)  = DZC(LL,K)
+            SGZKS(K,L) = DZC(LL,K)
+            ZS(L,K)    = Z(LL,K)
+            ZZS(K,L)   = ZZ(LL,K)
+          ENDDO
+        ENDIF
+      ENDIF
+
+      IF( SVBO(LN) > 0. )THEN
+        KSZN(L)=KSZV(LN)
+        IF( KSZ(LN) > KSZ(L) )THEN
+          BELVN(L) = BELV(LN)
+          !BELVN(L) = MAX(BELV(LN)-FRACK,BELV(L))
+          DO K=1,KC
+            SGZN(L,K)  = DZC(LN,K)
+            SGZKN(K,L) = DZC(LN,K)
+            ZN(L,K)    = Z(LN,K)
+            ZZN(K,L)   = ZZ(LN,K)
+          ENDDO
+        ELSEIF( IGRIDV == 2 .AND. KSZ(LN) == KSZ(L) .AND. KSZ(L) < KC-KMINV+1 )THEN
+          IF( BELV(L) >= BELV(LN) )THEN
+            LL = L
+          ELSE
+            LL = LN
+          ENDIF
+          BELVN(L) = BELV(LL)
+          DO K=1,KC
+            SGZN(L,K)  = DZC(LL,K)
+            SGZKN(K,L) = DZC(LL,K)
+            ZN(L,K)    = Z(LL,K)
+            ZZN(K,L)   = ZZ(LL,K)
+          ENDDO
+        ENDIF
+      ENDIF
+    ENDIF
+    
+    DO K=KSZ(L),KS
+      IF( SUBO(L) > 0.0 )THEN
+        IF( LSGZU(L,K) )THEN
+          DZGTMP = 0.5*(SGZU(L,K)+SGZU(L,K+1))
+          DZGTMP = 1./DZGTMP
+          DZIGSD4U(L,K)=0.25*DZGTMP*DZGTMP
+        ELSE
+          DZIGSD4U(L,K)=0.0
+        ENDIF
+      ELSE
+        DZIGSD4U(L,K)=0.25*DZIG(L,K)*DZIG(L,K)
+      ENDIF
+
+      IF( SVBO(L) > 0.0 )THEN
+        IF( LSGZV(L,K) )THEN
+          DZGTMP = 0.5*(SGZV(L,K)+SGZV(L,K+1))
+          DZGTMP = 1./DZGTMP
+          DZIGSD4V(L,K)=0.25*DZGTMP*DZGTMP
+        ELSE
+          DZIGSD4V(L,K)=0.
+        ENDIF
+      ELSE
+        DZIGSD4V(L,K)=0.25*DZIG(L,K)*DZIG(L,K)
+      ENDIF
+    ENDDO
+     
+  ENDDO
+
+  IF( IGRIDV > 0 )THEN
+    DO L=2,LA
+      HMP(L) = HMP(L)-SGZHPDELTA
+
+      ! *** SET FACE DEPTHS
+      HPW(L) = HP(L)+BELV(L) - BELVW(L)
+      HPE(L) = HP(L)+BELV(L) - BELVE(L)
+      HPS(L) = HP(L)+BELV(L) - BELVS(L)
+      HPN(L) = HP(L)+BELV(L) - BELVN(L)
+    ENDDO
+  ENDIF
+  
+  ! *** COMPUTE HU/HV FOR INITIAL CONDITIONS
+  DO L=2,LA
+    LW=LWC(L)
+    LS=LSC(L)
+      
+    IF( KSZ(LW) > KSZ(L) )THEN
+      HU(L) = MAX( 0.5*HPK(L,KSZ(LW)), HP(LW)*(1.+DZC(L,KSZ(LW))*0.1) )
+    ELSEIF( KSZ(LW) < KSZ(L) )THEN
+      HU(L) = MAX( 0.5*HPK(LW,KSZ(L)), HP(L)*(1.+DZC(LW,KSZ(L))*0.1) )
+    ELSE
+      HU(L) = 0.5*( DXYP(L)*HP(L) + DXYP(LW)*HP(LW) )/DXYP(L)
+    ENDIF
+
+    IF( KSZ(LS) > KSZ(L) )THEN
+      HV(L) = MAX( 0.5*HPK(L,KSZ(LS)), HP(LS)*(1.+DZC(L,KSZ(LS))*0.1) )
+    ELSEIF( KSZ(LS) < KSZ(L) )THEN
+      HV(L) = MAX( 0.5*HPK(LS,KSZ(L)), HP(L)*(1.+DZC(LS,KSZ(L))*0.1) )
+    ELSE
+      HV(L) = 0.5*( DXYP(L)*HP(L) + DXYP(LS)*HP(LS) )/DXYP(L)
+    ENDIF
+
+    HPI(L) = 1./HP(L)
+    HUI(L) = 1./HU(L)
+    HVI(L) = 1./HV(L)
+      
+  ENDDO
+  
+  ! **  INITIALIZE BUOYANCY AND EQUATION OF STATE - ALL CELLS
+  N=0
+  CALL CALBUOY(.FALSE.)
+
+  ! *** COMPUTATIONAL CELL LIST BY SUB-DOMAIN AND LAYER (WET/DRY CONSIDERED)
+  DO ND=1,NDM  
+    LF=2+(ND-1)*LDM  
+    LL=MIN(LF+LDM-1,LA)
+    DO K=1,KC
+      LN=0
+      DO L=LF,LL
+        IF( LKSZ(L,K) )CYCLE
+        IF( LMASKDRY(L) )THEN
+          LN = LN+1
+          LKWET(LN,K,ND) = L
+        ENDIF
+      ENDDO
+      LLWET(K,ND) = LN
+    ENDDO
+  ENDDO
+
+  ! *** COMPUTATIONAL CELL LIST FOR ENTIRE DOMAIN, i.e. ND=0, BY LAYER (WET/DRY CONSIDERED)
+  DO K=1,KC
+    LN=0
+    DO L=2,LA
+      IF( LKSZ(L,K) )CYCLE
+      IF( LMASKDRY(L) )THEN
+        LN = LN+1
+        LKWET(LN,K,0) = L  ! *** Wet Cell for Layer K
+      ENDIF
+    ENDDO
+    LLWET(K,0) = LN        ! *** Total Wet Cells for Layer K
+  ENDDO
+
+  DO K=1,KC  
+    DO L=2,LA
+      HPK(L,K) = HP(L)*DZC(L,K)
+    ENDDO
+  ENDDO
+  IF( ISRESTI > 0 )THEN
+    DO K=1,KC  
+      DO L=2,LA
+        H1PK(L,K) = H1P(L)*DZC(L,K)
+        H2PK(L,K) = H1PK(L,K)
+      ENDDO
+    ENDDO
+  ENDIF
+  
+  TMPVAL = MAX(HMIN,.01)
+  HPKI = 1./TMPVAL
+  DO K=1,KC  
+    DO L=2,LA
+      IF( K < KSZ(L) )CYCLE
+      HPKI(L,K) = 1./HPK(L,K)
+    ENDDO
+  ENDDO
+
+  IF( ISHDMF > 0 )THEN
+    ! *** READ THE HMD SUBSET LIST, IF NEEDED
+    IF( IHMDSUB > 0 )THEN
+      WRITE(*,'(A)')'READING MAPHMD.INP'
+      OPEN(1,FILE='maphmd.inp',STATUS='UNKNOWN')
+
+      ! *** SKIP OVER TITLE AND AND HEADER LINES                                                                              
+      LINE=READSTR(1)
+      READ(1,*,IOSTAT=ISO) NHDMF
+      IF( ISO > 0 ) STOP '  READ ERROR FOR FILE MAPHMD.INP'
+      DO NP=1,NHDMF
+        READ(1,*,IOSTAT=ISO) L,I,J
+        IF( ISO > 0 ) STOP '  READ ERROR FOR FILE MAPHMD.INP'
+        DO K=KSZ(L),KC
+          LHDMF(L,K) = .TRUE.
+        ENDDO
+      ENDDO
+      CLOSE(1)
+      PRINT '(A,I10)','  NUMBER OF HMD CELLS FOUND: ',NHDMF
+    ELSE
+      DO L=2,LA
+        DO K=KSZ(L),KC
+          LHDMF(L,K) = .TRUE.
+        ENDDO
+      ENDDO
+    ENDIF
+
+    DO ND=1,NDM  
+      DO K=1,KC  
+        LN=0
+        DO LP=1,LLWET(K,ND)
+          L=LKWET(LP,K,ND)  
+          IF( LHDMF(L,K) )THEN
+            LN = LN+1
+            LKHDMF(LN,K,ND) = L
+          ENDIF
+        ENDDO
+        LLHDMF(K,ND) = LN     ! *** NUMBER OF WET HDMF CELLS FOR THE CURRENT LAYER
+      ENDDO
+    ENDDO
+  ENDIF
+
+  ! *** END OF SIGMA-Z VARIABLE INITIALIZATION (SGZ) 
+  ! ***************************************************************************
+
+  ! *** DS-INTL BEGIN SEEPAGE
+  IF( ISGWIT == 3 )THEN
+    DO L=2,LA
+      QGW(L) = QGW(L)*DXYP(L)  ! M^3/S
+    ENDDO
+  ENDIF
+  
+  ! **  DEACTIVATE DRY CELLS
+   6902 FORMAT('  DRYING AT N,I,J =',I10,2I6,'  H,H1,H2 =',3(2X,E12.4))
+
+  ! **  INITIALIZE ZERO DIMENSION VOLUME BALANCE
+  IF( ISDRY >= 1 .AND. ISDRY <= 98 )THEN
+    OPEN(1,FILE=OUTDIR//'ZVOLBAL.OUT',STATUS='UNKNOWN')
+    CLOSE(1,STATUS='DELETE')
+    OPEN(1,FILE=OUTDIR//'AVSEL.OUT',STATUS='UNKNOWN')
+    LPBTMP=0
+    DO L=2,LA
+      TVAR3C(L)=0
+      IF( SPB(L) == 0 )THEN
+        LPBTMP=LPBTMP+1
+        TVAR3C(L)=1
+      ENDIF
+      LORDER(L)=0
+    ENDDO
+    TVAR3C(1)=1
+    TVAR3C(LC)=1
+    LORMAX=LC-2-LPBTMP
+    DO LS=1,LORMAX
+      BELMIN=100000.
+      DO L=2,LA
+        IF( SPB(L) /= 0 .AND. TVAR3C(L) /= 1 )THEN
+          IF( BELV(L) < BELMIN )THEN
+            LBELMIN=L
+            BELMIN=BELV(L)
+          ENDIF
+        ENDIF
+      ENDDO
+      LORDER(LS)=LBELMIN
+      TVAR3C(LBELMIN)=1
+    ENDDO
+    WRITE(1,5300)
+    LS=1
+    L=LORDER(LS)
+    BELSURF(LS)=BELV(L)
+    ASURFEL(LS)=DXYP(L)
+    VOLSEL(LS)=0.
+    WRITE(1,5301)LS,BELSURF(LS),ASURFEL(LS),VOLSEL(LS)
+    DO LS=2,LORMAX
+      L=LORDER(LS)
+      BELSURF(LS)=BELV(L)
+      ASURFEL(LS)=ASURFEL(LS-1)+DXYP(L)
+      VOLSEL(LS)=VOLSEL(LS-1)+0.5*(BELSURF(LS)-BELSURF(LS-1))* &
+          (ASURFEL(LS)+ASURFEL(LS-1))
+      WRITE(1,5301)LS,BELSURF(LS),ASURFEL(LS),VOLSEL(LS)
+    ENDDO
+    LS=LORMAX+1
+    BELSURF(LS)=BELV(L)+10.0
+    ASURFEL(LS)=ASURFEL(LS-1)
+    VOLSEL(LS)=VOLSEL(LS-1)+0.5*(BELSURF(LS)-BELSURF(LS-1))* &
+        (ASURFEL(LS)+ASURFEL(LS-1))
+    WRITE(1,5301)LS,BELSURF(LS),ASURFEL(LS),VOLSEL(LS)
+    VOLZERD=0.
+    VOLLDRY=0.
+    DO L=2,LA
+      IF( SPB(L) /= 0 )THEN
+        VOLZERD=VOLZERD+DXYP(L)*HP(L)
+        IF( HP(L) > HDRY) VOLLDRY=VOLLDRY+DXYP(L)*HP(L)
+      ENDIF
+    ENDDO
+    DO LS=1,LORMAX
+      IF( VOLZERD >= VOLSEL(LS) .AND. VOLZERD < VOLSEL(LS+1) )THEN
+        WTM=VOLSEL(LS+1)-VOLZERD
+        WTMP=VOLZERD-VOLSEL(LS)
+        DELVOL=VOLSEL(LS+1)-VOLSEL(LS)
+        WTM=WTM/DELVOL
+        WTMP=WTMP/DELVOL
+        SELZERD=WTM*BELSURF(LS)+WTMP*BELSURF(LS+1)
+        ASFZERD=WTM*ASURFEL(LS)+WTMP*ASURFEL(LS+1)
+      ENDIF
+    ENDDO
+    VETZERD=VOLZERD
+    WRITE(1,5302)
+    WRITE(1,5303) SELZERD,ASFZERD,VOLZERD,VOLLDRY
+    CLOSE(1)
+  ENDIF
+  5300 FORMAT('   M    BELSURF     ASURFEL        VOLSEL',/)
+  5301 FORMAT(1X,I5,2X,F10.5,2X,E12.4,2X,E12.4)
+  5302 FORMAT(/)
+  5303 FORMAT(2X,F10.5,3(2X,E12.4))
+
+  ! *** LARGE ASPECT RATIO ASSIGMENTS
+  NASPECT = 0
+  IF( XYRATIO > 1.1 )THEN
+    ALLOCATE(LASPECT(LCM))
+    LASPECT=.FALSE.
+    DO L=2,LA
+      IF( DXP(L) > XYRATIO*DYP(L) .OR. DYP(L) > XYRATIO*DXP(L) )THEN
+        NASPECT = NASPECT+1
+        LASPECT(L) = .TRUE.
+      ENDIF
+    ENDDO
+  ENDIF
+  
+  ! **  INITIALIZE ELEVATION OF ACTIVE GROUNDWATER ZONE FOR COLD START
+  IF( ISGWIE >= 1 .AND. ISRESTI == 0 )THEN
+    DO L=2,LA
+      IF( HP(L) > HDRY )THEN
+        AGWELV(L)=BELV(L)
+      ELSE
+        IF( BELAGW(L) < SELZERD )THEN
+          AGWELV(L)=SELZERD
+          AGWELV(L)=MIN(AGWELV(L),BELV(L))
+        ELSE
+          AGWELV(L)=BELAGW(L)
+        ENDIF
+      ENDIF
+    ENDDO
+    DO L=2,LA
+      AGWELV1(L)=AGWELV(L)
+      AGWELV2(L)=AGWELV(L)
+    ENDDO
+    OPEN(1,FILE=OUTDIR//'GWELV.OUT',STATUS='UNKNOWN')
+    WRITE(1,5400)
+    WRITE(1,5402)
+    DO L=2,LA
+      WRITE(1,5401)IL(L),JL(L),BELV(L),BELAGW(L),AGWELV(L)
+    ENDDO
+    CLOSE(1)
+  ENDIF
+  5400 FORMAT('   I   J    BELELV      BELAGW     ', &
+    '   AGWELV',/)
+  5401 FORMAT(1X,2I5,2X,F10.5,2X,F10.5,2X,F10.5)
+  5402 FORMAT(/)
+
+  ! **  CALCULATE CONSTANT C ARRAYS FOR EXTERNAL P SOLUTION
+  ! **  HRU=SUB*HMU*DYU/DXU & HRV=SVB*HMV*DXV/DYV
+  ! **  DXYIP=1/(DXP*DYP)
+  IF( IRVEC /= 9 )THEN
+    DO L=2,LA
+      CC(L)=1.
+      CCC(L)=1.
+    ENDDO
+    IF( ISRLID == 1 )THEN
+      DO L=2,LA
+        CC(L)=0.
+        CCC(L)=0.
+        IF( SPB(L) == 0. ) CC(L)=1.
+        IF( SPB(L) == 0. ) CCC(L)=1.
+      ENDDO
+    ENDIF
+    DO L=2,LA
+      LE=LEC(L)
+      LN=LNC(L)
+      C1=-G*DT*DT*SPB(L)*DXYIP(L)
+      CS(L)=C1*HRV(L)
+      CW(L)=C1*HRU(L)
+      CE(L)=C1*HRU(LE)
+      CN(L)=C1*HRV(LN)
+      CC(L)=CC(L)-CS(L)-CW(L)-CE(L)-CN(L)
+      CCI(L)=1./CC(L)
+      CCS(L)=0.25*CS(L)
+      CCW(L)=0.25*CW(L)
+      CCE(L)=0.25*CE(L)
+      CCN(L)=0.25*CN(L)
+      CCC(L)=CCC(L)-CCS(L)-CCW(L)-CCE(L)-CCN(L)
+      CCCI(L)=1./CCC(L)
+    ENDDO
+  ENDIF
+
+  !************************************************************************
+
+  ! *** INITIALIZE WATER QUALITY MODEL AND READ INPUT
+  IF( ISTRAN(8) >= 1 ) CALL WQ3DINP
+
+  ! *** INITIALIZE EFDC EXPLORER OUTPUT (SKIP IF CONTINUATION)
+  IF( ISPPH == 1 .AND. (ISRESTI == 0 .OR. (ISRESTI /= 0 .AND. ICONTINUE == 0))) CALL EE_LINKAGE(1)
+
+  ! *** CLOSE FILES NO LONGER NEEDED TO AVOID DRIVE UNAVAILABLE ERRORS
+  CLOSE(7)    ! *** EFDC.OUT
+  CLOSE(8)    ! *** EFDCLOG.OUT
+
+  ! *** RELEASE ARRAYS NOT USED
+  IF( ISWASP /= 17 )THEN
+    DEALLOCATE(DYEINIT)
+    DEALLOCATE(SALINIT)
+    DEALLOCATE(TEMINIT)
+    DEALLOCATE(SFLINIT)
+  ENDIF
+  
+  IF( ISR3DO > 0 .OR. IS3DO > 0 )THEN
+    BELVMIN = 1.E32
+    SELVMAX = -1.E32
+    DO L=2,LA
+      IF( ISDRY == 0 .OR. HP(L) >= HDRY ) SELVMAX = MAX(SELVMAX,BELV(L)+HP(L))
+      BELVMIN = MIN(BELVMIN,BELV(L))
+    ENDDO
+    DZPC=(SELVMAX-BELVMIN)/FLOAT(KC)
+
+    ZP(0)=BELVMIN
+    DO K=1,KC
+      ZP(K) = ZP(K-1)+DZPC
+    ENDDO
+    DO K=1,KC
+      ZZP(K) = 0.5*(ZP(K)+ZP(K-1))
+    ENDDO
+  ENDIF
+
+  !************************************************************************ 
+  ! *** SELECT FULL HYDRODYNAMIC AND MASS TRANSPORT CALCULATION OR
+  ! *** LONG-TERM MASS TRANSPORT CALCULATION  (DISABLED)
+  NITERAT=0
+  
+  IF( IS2TIM == 0 ) CALL HDMT
+  IF( IS2TIM >= 1 ) CALL HDMT2T
+  !IF(ISLTMT >= 1 ) CALL LTMT
+
+  ! *** ENSURE FINAL SNAPSHOT HAS BEEN WRITTEN
+  IF( ISPPH == 1 .AND. NSNAPSHOTS == NSNAPMAX )THEN
+    CALL EE_LINKAGE(0)
+  ENDIF
+
+  !************************************************************************
+  ! *** WRITE END OF RUN SUMMARIES TO SCREEN AND LOG FILES
+
+  CLOSE(8)
+  OPEN(8,FILE=OUTDIR//'EFDCLOG.OUT',POSITION='APPEND')
+
+  ! *** DISPLAY THE MHK SUMMARY
+  IF( LMHK )THEN
+    ETMP=SUM(ESUP(1:TCOUNT,2:LA))
+    WRITE(6,'("SUPPORT ENERGY LOSS    ",F10.4," MW-HR")')ETMP
+    ETMP=SUM(EMHK(1:TCOUNT,2:LA))
+    WRITE(6,'("MHK ENERGY OUTPUT      ",F10.4," MW-HR")')ETMP
+    WRITE(6,'(A)')'See EFDCLOG.OUT File'
+
+    ! *** WRITE TO LOG FILE
+    WRITE(8,'(//"***********************************************************************")')
+    WRITE(8,'("  MHK SUMMARY")')
+    ETMP=SUM(ESUP(1:TCOUNT,2:LA))
+    WRITE(8,'("  SUPPORT ENERGY LOSS  ",E14.6," MW-HR")')ETMP
+    ETMP=SUM(EMHK(1:TCOUNT,2:LA))
+    WRITE(8,'("  MHK ENERGY OUTPUT    ",E14.6," MW-HR")')ETMP
+    WRITE(8,'("***********************************************************************"//)')
+  ENDIF
+
+  ! *** DISPLAY ANY SEDZLJ WARNINGS
+  IF( NWARNING > 0 )THEN
+    WRITE(6,'(/A,I10)')   'SEDZLJ WARNING.  DURING THE SIMULATION THE ACTUAL BED SHEAR STRESS EXCEEDED'
+    WRITE(6,'(A,I10,A/)') '                 THE RANGE OF DEFINED SHEAR CATAGORIES IN THE SEDFLUME DATA',NWARNING,' TIMES'
+    WRITE(8,'(/A,I10)')   'SEDZLJ WARNING.  DURING THE SIMULATION THE ACTUAL BED SHEAR STRESS EXCEEDED'
+    WRITE(8,'(A,I10,A/)') '                 THE RANGE OF DEFINED SHEAR CATAGORIES IN THE SEDFLUME DATA',NWARNING,' TIMES'
+  ENDIF
+
+  ! *** PRINT THE NUMBER OF THREADS
+  WRITE(6,1)NTHREADS
+  WRITE(8,1)NTHREADS
+
+  ! *** OUTPUT TIMING (OUTPUT TO TIME.LOG (UNIT 9) USED BY EFDC_EXPLORER)
+  TIME_END=DSTIME(1)
+  TIME_END=(TIME_END-TIME_START)/3600.
+
+  ! *** DTIME AND FLUSH ARE SUPPORTED ON SUN SYSTEMS,BUT MAY NOT BE
+  ! *** SUPPORTED ON OTHER SYSTEMS.
+  TCPU=DTIME(CPUTIME)
+  TCPU=TCPU/3600./NTHREADS
+  CPUTIME(1)=CPUTIME(1)/3600./NTHREADS  !TCPU
+  CPUTIME(2)=CPUTIME(2)/3600./NTHREADS
+
+  TCONG =    TCONG/3600.
+  THDMT =    THDMT/3600.
+  TPUV =     TPUV/3600.
+  TTSED =    TTSED/3600.
+  TSSEDZLJ = TSSEDZLJ/3600.
+  TSSTX =    TSSTX/3600.
+  TCEXP =    TCEXP/3600.
+  TAVB =     TAVB/3600.
+  TUVW =     TUVW/3600.
+  TQQQ =     TQQQ/3600.
+  TTBXY =    TTBXY/3600.
+  THEAT =    THEAT/3600.
+  TVDIF =    TVDIF/3600.
+  TSADV =    TSADV/3600.
+  TLRPD =    TLRPD/3600.
+  THMDF =    THMDF/3600.
+  TWQADV =   TWQADV/3600.
+  TWQDIF =   TWQDIF/3600.
+  TWQKIN =   TWQKIN/3600.
+  TWQSED =   TWQSED/3600.
+
+  !------------------------------------------------------------------------
+  ! *** WRITE THE TIME SUMMARY TO THE SCREEN
+  IF( LSEDZLJ )THEN
+    WRITE(6,1995) THDMT    ,TSSEDZLJ
+  ELSE
+    WRITE(6,1996) THDMT    ,TTSED , TSSTX
+  ENDIF
+  WRITE(6,1997) TPUV      ,TCONG
+  WRITE(6,1998) TCEXP     ,TAVB
+  WRITE(6,1999) TUVW      ,TQQQ
+  WRITE(6,2000) TTBXY     ,THEAT
+  WRITE(6,2001) TLRPD     ,TSADV
+  WRITE(6,2002) THMDF     ,TVDIF
+  IF( ISTRAN(8) > 0 )THEN
+    WRITE(6,2003) TWQKIN  ,TWQADV
+    WRITE(6,2004) TWQSED  ,TWQDIF
+  ENDIF
+  WRITE(6,2005) CPUTIME(1),CPUTIME(2)
+  WRITE(6,2006) TIME_END  ,TCPU
+
+  !------------------------------------------------------------------------
+  ! *** WRITE THE TIME SUMMARY TO THE EFDC LOG
+  IF( LSEDZLJ )THEN
+    WRITE(8,1995)THDMT    ,TSSEDZLJ
+  ELSE
+    WRITE(8,1996)THDMT    ,TTSED, TSSTX
+  ENDIF
+  WRITE(8,1997) TPUV      ,TCONG
+  WRITE(8,1998) TCEXP     ,TAVB
+  WRITE(8,1999) TUVW      ,TQQQ
+  WRITE(8,2000) TTBXY     ,THEAT
+  WRITE(8,2001) TLRPD     ,TSADV
+  WRITE(8,2002) THMDF     ,TVDIF
+  WRITE(8,2003) TWQKIN    ,TWQADV
+  WRITE(8,2004) TWQSED    ,TWQDIF
+  WRITE(8,2005) CPUTIME(1),CPUTIME(2)
+  WRITE(8,2006) TIME_END,  TCPU
+
+  !------------------------------------------------------------------------
+   1995 FORMAT('***TIMING (HOURS)',/, &
+         'T HDMT      =',F7.3,'  T SEDZLJ    =',F7.3)
+   1996 FORMAT('***TIMING (HOURS)',/, &
+         'T HDMT      =',F7.3,'  T SSEDTOX   =',F7.3,F10.3)
+   1997 FORMAT('T P&UV VELS =',F7.3,'  T CONG GRAD =',F7.3)
+   1998 FORMAT('T EXPLICIT  =',F7.3,'  T C VERT V&D=',F7.3)
+   1999 FORMAT('T CALC UVW  =',F7.3,'  T TURB QQQ  =',F7.3)
+   2000 FORMAT('T T&B SHEAR =',F7.3,'  T HEAT PRCS =',F7.3)
+   2001 FORMAT('T PART TRK  =',F7.3,'  T ADV TRANSP=',F7.3)
+   2002 FORMAT('T HORIZ DIF =',F7.3,'  T VERT DFUSN=',F7.3)
+   2003 FORMAT('WQ KINETICS =',F7.3,'  WQ ADV TRANS=',F7.3)
+   2004 FORMAT('WQ DIAGEN   =',F7.3,'  WQ VERT DIFF=',F7.3)
+   2005 FORMAT('CPU USER    =',F7.3,'  CPU SYSTEM  =',F7.3)
+   2006 FORMAT('ELAPSED TIME=',F7.3,'  CPU TIME    =',F7.3)
+
+  !------------------------------------------------------------------------
+  ! *** EXACT FORMAT REQUIRED BY EFDC_EXPLORER
+  ! *** WRITE THE TIME SUMMARY TO THE TIME LOG
+  CALL TIMELOG(N,TIMEDAY,OUTDIR)
+
+  OPEN(9,FILE=OUTDIR//'TIME.LOG',POSITION='APPEND')
+  WRITE(9,6994)NTHREADS
+  IF( LSEDZLJ )THEN
+    WRITE(9,6995)THDMT    ,TSSEDZLJ
+  ELSE
+    WRITE(9,6996)THDMT    ,TTSED, TSSTX
+  ENDIF
+  WRITE(9,6997) TPUV      ,TCONG
+  WRITE(9,6998) TCEXP     ,TAVB
+  WRITE(9,6999) TUVW      ,TQQQ
+  WRITE(9,7000) TTBXY     ,THEAT
+  WRITE(9,7001) TLRPD     ,TSADV
+  WRITE(9,7002) THMDF     ,TVDIF
+  WRITE(9,7003) TWQKIN    ,TWQADV
+  WRITE(9,7004) TWQSED    ,TWQDIF
+  WRITE(9,7005) CPUTIME(1),CPUTIME(2)
+  WRITE(9,7006) TIME_END  ,TCPU
+   6994 FORMAT('***TIMING (HOURS)          # THREADS=',I5)
+   6995 FORMAT('T HDMT       =',F14.4,'  T SEDZLJ     =',F14.4)
+   6996 FORMAT('T HDMT       =',F14.4,'  T SSEDTOX    =',F14.4,F14.4)
+   6997 FORMAT('T P&UV VELS  =',F14.4,'  T CONG GRAD  =',F14.4)
+   6998 FORMAT('T EXPLICIT   =',F14.4,'  T C VERT V&D =',F14.4)
+   6999 FORMAT('T CALC UVW   =',F14.4,'  T TURB QQQ   =',F14.4)
+   7000 FORMAT('T T&B SHEAR  =',F14.4,'  T HEAT PRCS  =',F14.4)
+   7001 FORMAT('T PART TRK   =',F14.4,'  T ADV TRANSP =',F14.4)
+   7002 FORMAT('T HORIZ DIFF =',F14.4,'  T VERT DFUSN =',F14.4)
+   7003 FORMAT('WQ KINETICS  =',F14.4,'  WQ ADV TRANS =',F14.4)
+   7004 FORMAT('WQ DIAGEN    =',F14.4,'  WQ VERT DIFF =',F14.4)
+   7005 FORMAT('CPU USER     =',F14.4,'  CPU SYSTEM   =',F14.4)
+   7006 FORMAT('ELAPSED TIME =',F14.4,'  CPU TIME     =',F14.4)
+  !------------------------------------------------------------------------
+
+  ! *** CLOSE OUTPUT  FILES
+  CLOSE(8)
+  CLOSE(9)
+
+#ifdef WASPOUT
+  ! *** Move the WASP Linkage File to the output folder, if needed.
+  IF( ISWASP > 0 .OR. ISRCA > 0 .OR. ISICM > 0 )THEN
+    INQUIRE(FILE=HYDFIL,EXIST=RES)
+    IF( RES )THEN
+      ! *** LINKAGE FILE
+      IF( IHL_HANDLE /= 0 )THEN
+        CALL hlclose(IHL_HANDLE,IERROR)
+        IHL_HANDLE = 0
+      ENDIF
+      TITLE = OUTDIR//'wasp\'//HYDFIL
+      INQUIRE(FILE=TITLE,EXIST=RES)
+      IF( RES )THEN
+         I=DELFILESQQ (TITLE)
+         IF( I == 1)RES=RENAMEFILEQQ(HYDFIL,TITLE)
+      ELSE
+        RES=RENAMEFILEQQ(HYDFIL,TITLE)
+      ENDIF
+    
+      ! *** LOG/DEBUG FILE
+      INQUIRE(FILE=OUTDIR//'wasp\log.txt',EXIST=RES)
+      IF( RES )THEN
+         I=DELFILESQQ (OUTDIR//'wasp\log.txt')
+         IF( I == 1)RES=RENAMEFILEQQ('log.txt',OUTDIR//'wasp\log.txt')
+      ELSE
+        RES=RENAMEFILEQQ('log.txt',OUTDIR//'wasp\log.txt')
+      ENDIF
+    ENDIF
+  ENDIF
+#endif
+
+  ! *** Handle Runtime Flag
+  OPEN(1,FILE='0run',STATUS='UNKNOWN')
+  CLOSE(1,STATUS='DELETE')
+
+#ifdef _WIN64
+  IF( PAUSEIT ) PAUSE
+#endif
+
+  STOP
+
+END

@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VisualStudioProject ProjectCreator="Intel Fortran" Keyword="Console Application" Version="11.0" ProjectIdGuid="{06B87B4A-6EE0-486A-9B6D-1C70BC84D4BC}">
+	<Platforms>
+		<Platform Name="Win32"/>
+		<Platform Name="x64"/></Platforms>
+	<Configurations>
+		<Configuration Name="DebugSP64|x64" OutputDirectory="$(ConfigurationName)" IntermediateDirectory="$(ConfigurationName)" TargetName="$(ProjectName)_190819_x64debug">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" MultiProcessorCompilation="true" Optimization="optimizeDisabled" Preprocess="preprocessYes" PreprocessorDefinitions="_WIN;_WIN64;TRIAL" UndefinePreprocessorDefinitions="_WIN32" OpenMP="OpenMPSequentialCode" WarnDeclarations="true" WarnUnusedVariables="true" WarnUncalled="true" WarnInterfaces="true" FloatingPointExceptionHandling="fpe0" FloatingPointModel="source" CallingConvention="callConventionCRef" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+				<Tool Name="VFLinkerTool" OutputFile="$(OutDir)\$(TargetName).exe" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="..\NetCDFLib\lib" GenerateManifest="false" GenerateDebugInformation="true" SubSystem="subSystemConsole" InterproceduralOptimizations="false"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/>
+				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
+		<Configuration Name="DebugDP64|x64" OutputDirectory="$(ConfigurationName)" IntermediateDirectory="$(ConfigurationName)" TargetName="$(ProjectName)_190819_DPx64debug">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" MultiProcessorCompilation="true" Optimization="optimizeDisabled" Preprocess="preprocessYes" PreprocessorDefinitions="_WIN;_WIN64;TRIAL" UndefinePreprocessorDefinitions="_WIN32" OpenMP="OpenMPSequentialCode" WarnDeclarations="true" WarnUnusedVariables="true" WarnUncalled="true" WarnInterfaces="true" RealKIND="realKIND8" FloatingPointExceptionHandling="fpe0" FloatingPointModel="source" CallingConvention="callConventionCRef" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+				<Tool Name="VFLinkerTool" OutputFile="$(OutDir)\$(TargetName).exe" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="..\NetCDFLib\lib" GenerateManifest="false" GenerateDebugInformation="true" SubSystem="subSystemConsole" InterproceduralOptimizations="false"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/>
+				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
+		<Configuration Name="ReleaseSP|Win32" TargetName="$(ProjectName)_190819_a32">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" MultiProcessorCompilation="true" Optimization="optimizeFull" OmitFramePointers="false" Parallelization="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="..\NetCDFLib\include" PreprocessorDefinitions="_WIN;_WIN32;NCOUT;WASPOUT;TRIAL" UndefinePreprocessorDefinitions="_WIN64" OpenMP="OpenMPParallelCode" OpenMPDiagLevel="openMPDiagLevel2" FloatingPointExceptionHandling="fpe0" FloatingPointModel="source" FloatingPointSpeculation="fpSpeculationSafe" CallingConvention="callConventionCRef" Traceback="true" RuntimeChecks="rtChecksNone"/>
+				<Tool Name="VFLinkerTool" OutputFile="$(OutDir)\$(TargetName).exe" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="..\NetCDFLib\lib" IgnoreDefaultLibraryNames="libcmtd.lib;mscvrtd.lib" GenerateManifest="false" SubSystem="subSystemConsole" StackReserveSize="10000000" AdditionalDependencies="netcdf4.lib netcdf_f.lib netcdf.lib ..\WASP\icfhydrolink.lib"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/>
+				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
+		<Configuration Name="ReleaseDP|Win32" TargetName="$(ProjectName)_190819_DPa32">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" MultiProcessorCompilation="true" Optimization="optimizeFull" OmitFramePointers="false" Parallelization="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="..\NetCDFLib\include" PreprocessorDefinitions="_WIN;_WIN32;NCOUT;WASPOUT;TRIAL" UndefinePreprocessorDefinitions="_WIN64" OpenMP="OpenMPParallelCode" OpenMPDiagLevel="openMPDiagLevel2" RealKIND="realKIND8" FloatingPointExceptionHandling="fpe0" FloatingPointModel="source" FloatingPointSpeculation="fpSpeculationSafe" CallingConvention="callConventionCRef" Traceback="true" RuntimeChecks="rtChecksNone"/>
+				<Tool Name="VFLinkerTool" OutputFile="$(OutDir)\$(TargetName).exe" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="..\NetCDFLib\lib" IgnoreDefaultLibraryNames="libcmtd.lib;mscvrtd.lib" GenerateManifest="false" SubSystem="subSystemConsole" StackReserveSize="10000000" AdditionalDependencies="netcdf4.lib netcdf_f.lib netcdf.lib ..\WASP\icfhydrolink.lib"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/>
+				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
+		<Configuration Name="ReleaseDP64|x64" OutputDirectory="$(ConfigurationName)" IntermediateDirectory="$(ConfigurationName)" TargetName="$(ProjectName)_190819_DPx64">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" MultiProcessorCompilation="true" Optimization="optimizeFull" Preprocess="preprocessYes" AdditionalIncludeDirectories="..\NetCDFLib\include" PreprocessorDefinitions="_WIN;_WIN64;TRIAL;_NCOUT" UndefinePreprocessorDefinitions="_WIN32" OpenMP="OpenMPParallelCode" OpenMPDiagLevel="openMPDiagLevel2" RealKIND="realKIND8" FloatingPointExceptionHandling="fpe0" FloatingPointModel="source" FloatingPointSpeculation="fpSpeculationSafe" CallingConvention="callConventionCRef" Traceback="true" RuntimeChecks="rtChecksNone"/>
+				<Tool Name="VFLinkerTool" OutputFile="$(OutDir)\$(TargetName).exe" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="..\NetCDFLib\lib" IgnoreDefaultLibraryNames="libcmtd.lib;mscvrtd.lib" GenerateManifest="false" GenerateMapFile="true" MapFileName="EFDCPlus" SubSystem="subSystemConsole" StackReserveSize="10000000" AdditionalDependencies="netcdf4.lib netcdf_f.lib netcdf.lib"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/>
+				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
+		<Configuration Name="ReleaseSP64|x64" OutputDirectory="$(ConfigurationName)" IntermediateDirectory="$(ConfigurationName)" TargetName="$(ProjectName)_190819_x64">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" MultiProcessorCompilation="true" Optimization="optimizeFull" OmitFramePointers="false" Preprocess="preprocessYes" PreprocessorDefinitions="_WIN;_WIN64;TRIAL;_NCOUT" UndefinePreprocessorDefinitions="_WIN32" OpenMP="OpenMPParallelCode" OpenMPDiagLevel="openMPDiagLevel2" FloatingPointExceptionHandling="fpe0" FloatingPointModel="source" FloatingPointSpeculation="fpSpeculationSafe" CallingConvention="callConventionCRef" Traceback="true" RuntimeChecks="rtChecksNone"/>
+				<Tool Name="VFLinkerTool" OutputFile="$(OutDir)\$(TargetName).exe" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="..\NetCDFLib\lib" IgnoreDefaultLibraryNames="libcmtd.lib;mscvrtd.lib" SubSystem="subSystemConsole" StackReserveSize="10000000" AdditionalDependencies="netcdf4.lib netcdf_f.lib netcdf.lib ..\WASP\icfhydrolink.lib"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/>
+				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration></Configurations>
+	<Files>
+		<Filter Name="Header Files" Filter="fi;fd"/>
+		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"/>
+		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
+		<File RelativePath=".\aaefdc.f90"/>
+		<File RelativePath=".\ainit.f90">
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\bal2t.f90"/>
+		<File RelativePath=".\bankerosed.f90"/>
+		<File RelativePath=".\bedinit.f90"/>
+		<File RelativePath=".\bedload.f90"/>
+		<File RelativePath=".\budget.f90"/>
+		<File RelativePath=".\calavb.f90"/>
+		<File RelativePath=".\calbal.f90"/>
+		<File RelativePath=".\calbed.f90"/>
+		<File RelativePath=".\calbed9.f90"/>
+		<File RelativePath=".\calblay.f90"/>
+		<File RelativePath=".\calbuoy.f90"/>
+		<File RelativePath=".\calconc.f90"/>
+		<File RelativePath=".\calcsermod.f90"/>
+		<File RelativePath=".\caldiff.f90"/>
+		<File RelativePath=".\caldisp2.f90"/>
+		<File RelativePath=".\caldisp3.f90"/>
+		<File RelativePath=".\calebi.f90"/>
+		<File RelativePath=".\calexp.f90"/>
+		<File RelativePath=".\calexp2t.f90"/>
+		<File RelativePath=".\calfqc.f90"/>
+		<File RelativePath=".\calhdmf.f90"/>
+		<File RelativePath=".\calhdmf3.f90"/>
+		<File RelativePath=".\calheat.f90"/>
+		<File RelativePath=".\calhta.f90"/>
+		<File RelativePath=".\calmmt.f90"/>
+		<File RelativePath=".\calpnhs.f90"/>
+		<File RelativePath=".\calpser.f90"/>
+		<File RelativePath=".\calpuv2c.f90"/>
+		<File RelativePath=".\calpuv9c.f90"/>
+		<File RelativePath=".\calqq1.f90"/>
+		<File RelativePath=".\calqq2t.f90"/>
+		<File RelativePath=".\calqvs.f90"/>
+		<File RelativePath=".\calsed.f90"/>
+		<File RelativePath=".\calsft.f90"/>
+		<File RelativePath=".\calsnd.f90"/>
+		<File RelativePath=".\calstepd.f90"/>
+		<File RelativePath=".\caltbxy.f90"/>
+		<File RelativePath=".\caltox.f90"/>
+		<File RelativePath=".\caltox_kinetics.f90"/>
+		<File RelativePath=".\caltoxb.f90"/>
+		<File RelativePath=".\caltran.f90"/>
+		<File RelativePath=".\caltranice.f90"/>
+		<File RelativePath=".\caltsxy.f90"/>
+		<File RelativePath=".\caluvw.f90"/>
+		<File RelativePath=".\calvegser.f90"/>
+		<File RelativePath=".\calwqc.f90"/>
+		<File RelativePath=".\cbalev.f90"/>
+		<File RelativePath=".\cbalod.f90"/>
+		<File RelativePath=".\cellmap.f90"/>
+		<File RelativePath=".\cellmask.f90"/>
+		<File RelativePath=".\ceqicm.f90"/>
+		<File RelativePath=".\congrad.f90"/>
+		<File RelativePath=".\congradc.f90"/>
+		<File RelativePath=".\convertwgs84.f90"/>
+		<File RelativePath=".\csedresb.f90"/>
+		<File RelativePath=".\csedress.f90"/>
+		<File RelativePath=".\csedset.f90"/>
+		<File RelativePath=".\csedtaub.f90"/>
+		<File RelativePath=".\csedtaus.f90"/>
+		<File RelativePath=".\csedvis.f90"/>
+		<File RelativePath=".\csndeqc.f90"/>
+		<File RelativePath=".\csndset.f90"/>
+		<File RelativePath=".\csndzeq.f90"/>
+		<File RelativePath=".\d_diagen.f90"/>
+		<File RelativePath=".\d_input.f90"/>
+		<File RelativePath=".\d_sedflux.f90"/>
+		<File RelativePath=".\d_solvsmbe.f90"/>
+		<File RelativePath=".\d_zbrent.f90"/>
+		<File RelativePath=".\drifter.f90"/>
+		<File RelativePath=".\dstime.f90"/>
+		<File RelativePath=".\efdcout.f90"/>
+		<File RelativePath=".\fdstrse.f90"/>
+		<File RelativePath=".\fhydcn.f90"/>
+		<File RelativePath=".\foodchain.f90"/>
+		<File RelativePath=".\fprobdep.f90"/>
+		<File RelativePath=".\fsbdld.f90"/>
+		<File RelativePath=".\fsedmode.f90"/>
+		<File RelativePath=".\fstrse.f90"/>
+		<File RelativePath=".\getswanmod.f90"/>
+		<File RelativePath=".\hdmt.f90"/>
+		<File RelativePath=".\hdmt2t.f90"/>
+		<File RelativePath=".\hifreqout.f90"/>
+		<File RelativePath=".\hydstrucmod.f90"/>
+		<File RelativePath=".\infomod.f90"/>
+		<File RelativePath=".\input.f90">
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\jpacon.f90"/>
+		<File RelativePath=".\jpefdc.f90"/>
+		<File RelativePath=".\julianmod.f90"/>
+		<File RelativePath=".\lsqharm.f90"/>
+		<File RelativePath=".\lubksb.f90"/>
+		<File RelativePath=".\ludcmp.f90"/>
+		<File RelativePath=".\mhkpwr.f90"/>
+		<File RelativePath=".\mod_netcdf.f90"/>
+		<File RelativePath=".\negdep.f90"/>
+		<File RelativePath=".\out3d.f90"/>
+		<File RelativePath=".\partmix.f90"/>
+		<File RelativePath=".\rcahq.f90"/>
+		<File RelativePath=".\restartmod.f90"/>
+		<File RelativePath=".\rout3d.f90"/>
+		<File RelativePath=".\rsalplth.f90"/>
+		<File RelativePath=".\rsalpltv.f90"/>
+		<File RelativePath=".\rsmici.f90"/>
+		<File RelativePath=".\rsurfplt.f90"/>
+		<File RelativePath=".\runcontrol.f90"/>
+		<File RelativePath=".\rvelplth.f90"/>
+		<File RelativePath=".\rvelpltv.f90"/>
+		<File RelativePath=".\s_bedload.f90"/>
+		<File RelativePath=".\s_main.f90"/>
+		<File RelativePath=".\s_massbalance.f90"/>
+		<File RelativePath=".\s_sedic.f90"/>
+		<File RelativePath=".\s_sedzlj.f90"/>
+		<File RelativePath=".\s_shear.f90"/>
+		<File RelativePath=".\s_slope.f90"/>
+		<File RelativePath=".\s_tecplot.f90"/>
+		<File RelativePath=".\scaninpmod.f90"/>
+		<File RelativePath=".\seek.f90"/>
+		<File RelativePath=".\setbcs.f90"/>
+		<File RelativePath=".\setfpocb.f90"/>
+		<File RelativePath=".\setopenbc.f90"/>
+		<File RelativePath=".\setopenbc2.f90"/>
+		<File RelativePath=".\setshld.f90"/>
+		<File RelativePath=".\setstvel.f90"/>
+		<File RelativePath=".\showval.f90"/>
+		<File RelativePath=".\ssedtox.f90"/>
+		<File RelativePath=".\subchan.f90"/>
+		<File RelativePath=".\svbksb.f90"/>
+		<File RelativePath=".\svdcmp.f90"/>
+		<File RelativePath=".\timelog.f90"/>
+		<File RelativePath=".\tmsr.f90"/>
+		<File RelativePath=".\var_global_mod.f90"/>
+		<File RelativePath=".\varalloc.f90">
+			<FileConfiguration Name="ReleaseSP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseDP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\varinit.f90">
+			<FileConfiguration Name="ReleaseSP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseDP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\varzeroint.f90">
+			<FileConfiguration Name="ReleaseSP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseDP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseDP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\varzeroreal.f90">
+			<FileConfiguration Name="ReleaseSP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseDP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration>
+			<FileConfiguration Name="ReleaseDP64|x64">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\varzerosnl.f90">
+			<FileConfiguration Name="ReleaseSP|Win32">
+				<Tool Name="VFFortranCompilerTool" Optimization="optimizeDisabled"/></FileConfiguration></File>
+		<File RelativePath=".\wasp4.f90"/>
+		<File RelativePath=".\wasp5.f90"/>
+		<File RelativePath=".\wasp6.f90"/>
+		<File RelativePath=".\wasp7.f90"/>
+		<File RelativePath=".\wasp7hydro.f90"/>
+		<File RelativePath=".\wavebl.f90"/>
+		<File RelativePath=".\wavelength.f90"/>
+		<File RelativePath=".\wavesxy.f90"/>
+		<File RelativePath=".\welcome.f90"/>
+		<File RelativePath=".\windwave.f90"/>
+		<File RelativePath=".\wq3d.f90"/>
+		<File RelativePath=".\wq3dcontrol.f90"/>
+		<File RelativePath=".\wq3dinp.f90"/>
+		<File RelativePath=".\wqagr.f90"/>
+		<File RelativePath=".\wqbenthic.f90"/>
+		<File RelativePath=".\wqcsr.f90"/>
+		<File RelativePath=".\wqici.f90"/>
+		<File RelativePath=".\wqpsl.f90"/>
+		<File RelativePath=".\wqrpemmod.f90"/>
+		<File RelativePath=".\wqske0.f90"/>
+		<File RelativePath=".\wqske1.f90"/>
+		<File RelativePath=".\wqske2.f90"/>
+		<File RelativePath=".\wqske3.f90"/>
+		<File RelativePath=".\wqske4.f90"/>
+		<File RelativePath=".\wqstl.f90"/>
+		<File RelativePath=".\wqsun.f90"/>
+		<File RelativePath=".\wqwet.f90"/>
+		<File RelativePath=".\wwqnc.f90"/>
+		<File RelativePath=".\xyijconv.f90"/></Filter></Files>
+	<Globals/></VisualStudioProject>

@@ -1,0 +1,13 @@
+.. _waterquality:
+
+Water Quality	
+-------------
+
+============ ===============================================================================================================
+File Input   Description
+============ ===============================================================================================================
+wqwcmap.inp  Maps an I,J,K water quality cell to a water quality zone
+wqsdmap.inp  Maps an I,J water quality cell to a sediment flux zone
+algaegro.inp Time and spatially varying algal growth kinetic factors
+algaeset.inp Time and spatially varying algal and particulate organic matter settling rates and reaeration adjustment factor
+============ ===============================================================================================================

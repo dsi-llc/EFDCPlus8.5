@@ -1,0 +1,29 @@
+.. _sediment:
+
+
+Sediment 
+--------
+
+These files describe the files necessary to specify the initial conditions for a model.
+
+============= ===================================================
+Input File    Description
+============= ===================================================
+salt.inp      Initial concentrations for the salinity
+temp.inp      Initial concentrations for the temperature
+dye.inp       Initial concentrations for the dye
+sedw.inp      Cohesive Sediment water column
+sndw.inp      Non-Cohesive Sediment water column
+sedb.inp      Cohesive Sediment bed
+sndb.inp      Non-Cohesive Sediment bed
+pocw.inp      Particulate organic carbon water column
+pocb.inp      Particulate organic carbon bed
+docw.inp      Dissolved organic carbon water column
+docb.inp      Dissolved organic carbon bed
+fpocb.inp     Fractional particulate organic carbon bed
+fpocw.inp     Fractional particulate organic carbon water column
+wqwcrst.inp   Spatially/temporally varing ICs
+wqsdici.inp   Spatially/temporally varing ICs
+wqsdrst.inp   Spatially/temporally varing ICs
+wqrpemsic.inp Rooted plant
+============= ===================================================

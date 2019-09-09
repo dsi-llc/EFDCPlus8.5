@@ -1,0 +1,15 @@
+C  VEGE.INP file, Free Format, EFDC+ Testing
+C 
+C  MVEGTYP  MVEGOW NVEGSER  UVEGSCL
+C
+C    MVEGTYP: Number of Vegetation Classes,   MVEGOW:  Vegetation Class of Open Water
+C    NVEGSER: Number of Vegetation Series,    UVEGSCL: Vel Scale
+C    
+C  After reading MVEGTYP then read in MVEGTYP lines of the following variables
+C  Note:  BETVEG & GAMVEG are Not Used
+C
+C       M  NVEGSERV  RDLPSQ   BPVEG   HPVEG  ALPVEG  BETVEG  GAMVEG   SCVEG
+C    typ#    no dim  1/m^2  meters  meters  no dim  no dim  no dim  no dim
+          2       2       0    0.0000
+          1       0       0       0       0       0       0       0       0
+          2       0       0       0       0       0       0       0       0

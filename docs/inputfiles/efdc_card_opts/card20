@@ -1,0 +1,12 @@
+------------------------------------------------------------------------------
+C20 PERIODIC FORCING (TIDAL) SURF ELEV OR PRESSURE ON EAST OPEN BOUNDARIES
+*
+*  IPBE: SEE CARD 18
+*  JPBE:
+*  ISPBE:
+*  NPFORE:
+*  NPSERE:
+*  TPCOORDE: 
+*  GRPID: ID NUMBER OF BOUNDARY GROUP
+*
+C20    IPBE    JPBE   ISPBE  NPFORE  NPSERE      GRPID ! ID

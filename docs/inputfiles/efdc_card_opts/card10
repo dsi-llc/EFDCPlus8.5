@@ -1,0 +1,9 @@
+------------------------------------------------------------------------------
+C10 LAYER THICKNESS IN VERTICAL
+*
+*    K:  LAYER NUMBER, K=1,KC
+*  DZC:  DIMENSIONLESS LAYER THICKNESS (THICKNESSES MUST SUM TO 1.0)
+*
+*
+*
+C10  K   DZC 

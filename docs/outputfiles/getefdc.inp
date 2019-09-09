@@ -1,0 +1,77 @@
+** COMMENT LINES START WITH "*"
+** GETEFDC VER. 161128 IS USED TO:
+** EXTRACT EFDC BINARY FILES *.OUT (EFDC 6.0 OR LATER) TO NETCDF AND ASCII FILES FOR:
+**  1.TIME SERIES AT SOME LOCATIONS DETERMINED BY (I,J) OR (X,Y)   
+**  2.TECPLOT OF ONE LAYER (K>=0) AT OME SPECIFIC SNAPSHOT
+**  3.ARRAYS OF DATA
+**
+** OBLIGATORY INPUT FILES:
+**  0.GETEFDC.INP: THIS FILE
+**  1.EFDC.INP
+**  2.LXLY.INP
+**  3.DXDY.INP
+**  4.CELL.INP
+**  5.CORNERS.INP
+**  6.MAPPGNS.INP
+**  7.MAPPGEW.INP
+** 
+** THE FOLLOWING BINARY FILES WILL BE READ ACCORDING TO SELECTED ITEMS
+**  1.EE_WS.OUT  
+**  2.EE_VEL.OUT 
+**  3.EE_WC.OUT  
+**  4.EE_WQ.OUT  
+**  5.EE_DRIFTER.OUT
+**  6.EE_BC.OUT
+**  7.EE_BED.OUT
+**  8.EE_TUR.OUT
+**
+**  OUPUT OF GETEFDC IS STORED IN RESULT FOLDER
+**
+*****************************************************************************
+** THE FULL PATH OF INP FILES is determined by the file efdc.inp:
+**
+E:\Projects\EFDC_Testing\restart\caloo-autorun_1\efdc.inp
+**
+*****************************************************************************
+** OPTIONS FOR OUTPUT:
+** LAYK        = K>0: DATA AT LAYER NUMBER K TO BE EXPORTED AT TIME=JULTIME 
+**                 0: DEPTH-AVERAGED DATA IS EXPORTED
+**                -1: Get High Frequency output FOR CELLS
+**                -2: Extract data for Time series at a height above bed (m)
+**                -3: LOAD TMP.DAT AND EXPORT TECPLOT
+**
+** ZOPT          = 1: FOR THE DEPTH UNDER WATER SURFACE IF LAYK=-2
+**                 2: FOR THE HEIGHT ABOVE BOTTOM IF LAYK=-2
+** NDRIFTER         : N1:N2 A SET OF DRIFTER TO GET (X,Y,Z)
+**
+**
+** JULTIME          : JULIAN TIME FOR SELECTED LAYER
+**                  > MAXTIME THEN JULTIME=MAXTIME
+**                    0 DATA FOR ALL SNAPSHOT
+** NLOC             : NUMBER OF CELLS TO EXTRACT TIMESERIES
+** ROTA          = 1: (U,V) AT CELL CENTER ROTATED TO TRUE EAST AND TRUE NORTH
+**                 0: (U,V) AT CELL  FACES WITHOUT ROTATION
+** INDEX         = 1: (I,J) OF CELLS ARE GIVEN
+**                 0: (X,Y) OF CELLS ARE GIVEN
+** VPROF         = 1: EXPORT VERTICAL PROFILE
+**               = 0: NO EXPORTATION FOR VERTICAL PROFILE
+**
+** TECPLOT       = 1: EXPORT DATA FOR TECPLOT
+**               = 0: NO TECPLOT EXPORTATION
+**
+*****************************************************************************
+** LAYK    JULTIME      NLOC    ROTA  INDEX  VPROF  TECPLOT   ZOPT  NDRIFTER
+    4          0        2        1      1     1       1        1       1:5
+*****************************************************************************
+**  I/X             : I Index or X of cell
+**
+**  J/Y             : J Index or Y of cell
+**
+**  ZINT            : THE DEPTH UNDER WS OR HEIGHT ABOVE BED (m)  
+**                    FOR TIME SERIES EXTRACTION IF LAYK=-2
+**
+*****************************************************************************
+**   I/X           J/Y          ZINT(m)
+**   314782.0    3941547.0       0.5 
+     3 44            0.5
+     3  45   0.7

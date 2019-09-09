@@ -1,0 +1,338 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>1. Build Instructions &mdash; EFDC+ Documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script type="text/javascript" src="../_static/jquery.js"></script>
+        <script type="text/javascript" src="../_static/underscore.js"></script>
+        <script type="text/javascript" src="../_static/doctools.js"></script>
+        <script type="text/javascript" src="../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2. Running" href="running.html" />
+    <link rel="prev" title="Getting Started" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> EFDCPlus
+          
+
+          
+            
+            <img src="../_static/eems-logo-80px.png" class="logo" alt="Logo"/>
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                8.5
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Getting Started</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">1. Build Instructions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#build-configurations">1.1. Build Configurations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#openmp-compilation">1.1.1. OpenMP Compilation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#intel-compiler-versions-tested">1.1.2. Intel Compiler Versions Tested</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#visual-studio-versions-tested">1.1.3. Visual Studio Versions Tested</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="running.html">2. Running</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../gridgen/index.html">Cartesian Grid Generator User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inputfiles/index.html">Input Files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../outputfiles/index.html">Output Files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../samplemodels/index.html">Sample Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">EFDCPlus</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="index.html">Getting Started</a> &raquo;</li>
+        
+      <li>1. Build Instructions</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/started/build.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="build-instructions">
+<span id="build"></span><h1>1. Build Instructions<a class="headerlink" href="#build-instructions" title="Permalink to this headline">¶</a></h1>
+<p>Building EFDC+ from the source code is most easily carried out with Visual Studio (VS).  The Intel Fortran compiler is the preferred compiler and the most tested for building EFDC+.  The simplest build method is to open the VS solution file that comes with the source code.  The solution file is located in the root directory of the <code class="docutils literal notranslate"><span class="pre">EFDC</span></code> folder and will have the ‘.sln’ extension.  The following discussion assumes the user is running Windows 7 (or greater) and has access to Visual Studio 2015 (or greater).  These tools have been most throughly tested.  However, it is likely that EFDC+ can be built with other versions of the Intel compiler and Visual Studio.</p>
+<p>In addition to the source code, pre-built executables are available under each of the following folders:</p>
+<ul class="simple">
+<li>EFDC/DebugSP64/</li>
+<li>EFDC/ReleaseDP64/</li>
+<li>EFDC/ReleaseSP/</li>
+<li>EFDC/ReleaseSP64/</li>
+</ul>
+<p>Next, the differences in each of the build configurations will be explained.</p>
+<div class="section" id="build-configurations">
+<h2>1.1. Build Configurations<a class="headerlink" href="#build-configurations" title="Permalink to this headline">¶</a></h2>
+<p>The different build configurations are managed by VS.  Visual studio provides a convenient way for maintaining different build configurations for the same project.  The build configurations can be inspected by clicking the <cite>Project</cite> tab in the top of VS and selecting <cite>properties</cite>.  Each of the build configurations is listed below:</p>
+<ul class="simple">
+<li>DEBUG SP</li>
+<li>DEBUG SP 64</li>
+<li>DEBUG DP</li>
+<li>DEBUG DP 64</li>
+<li>Release SP</li>
+<li>Release SP 64</li>
+<li>Release DP</li>
+<li>Release DP 64</li>
+</ul>
+<p>For each of the bulleted build configurations listed above, if <cite>64</cite> is not specified, the executables is assumed to be compiled for a  32 bit system.  The table below explains the shorthand used to signify the differences in build configurations.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="10%" />
+<col width="90%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>SP</td>
+<td>Single Precision</td>
+</tr>
+<tr class="row-even"><td>DP</td>
+<td>Double Precision</td>
+</tr>
+<tr class="row-odd"><td>64</td>
+<td>64 bit compilation</td>
+</tr>
+</tbody>
+</table>
+<div class="section" id="openmp-compilation">
+<h3>1.1.1. OpenMP Compilation<a class="headerlink" href="#openmp-compilation" title="Permalink to this headline">¶</a></h3>
+<p>Compilation of EFDC+ with OpenMP allows multithreading, which typical results in a reduction of the total calculation time.  The build configuration requires specifying several things in the VS <cite>Properties</cite> page.  These settings are already configured in the builds provided.  However, the details are given below in case a user wants to make modifications or use an OpenMP library besides Intel’s.</p>
+<p><strong>Under: Fortran\Preprocessor</strong></p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>OpenMP Conditional Compilation</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Under: Fortran\Preprocessor</strong></p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="43%" />
+<col width="57%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>Process OpenMP Directives</td>
+<td>Generate Parallel Code (/Qopenmp)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Under: Fortran\Libraries</strong></p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="36%" />
+<col width="64%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>Runtime Library</td>
+<td>Multithreaded DLL (/libs.dll /threads)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Under: Linker\Input</strong></p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="58%" />
+<col width="42%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>Additional Dependencies</td>
+<td>libiomp5md.lib</td>
+</tr>
+</tbody>
+</table>
+<p>Below is a summary of the Intel compiler suite and Visual Studio versions that are known to work.</p>
+</div>
+<div class="section" id="intel-compiler-versions-tested">
+<h3>1.1.2. Intel Compiler Versions Tested<a class="headerlink" href="#intel-compiler-versions-tested" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li>Intel 15</li>
+<li>Intel 19.3</li>
+<li>Intel 19.4</li>
+</ul>
+</div>
+<div class="section" id="visual-studio-versions-tested">
+<h3>1.1.3. Visual Studio Versions Tested<a class="headerlink" href="#visual-studio-versions-tested" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li>2015</li>
+<li>2019 (Preview 4)</li>
+</ul>
+</div>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="running.html" class="btn btn-neutral float-right" title="2. Running" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="index.html" class="btn btn-neutral float-left" title="Getting Started" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright DSI, LLC
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

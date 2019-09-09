@@ -1,0 +1,86 @@
+! *** THE FUNCTIONS IN THIS FILE WERE ADDED TO REPLACE THE C LIB FUNCTIONS OF KBHIT AND ATEXIT
+! *** THE NEW APPROACH FOR KEYBOARD RUN CONTROLS ALLOWS FOR 32BIT AND/OR 64BIT COMPILATIONS
+!
+! CHANGE RECORD  
+! DATE MODIFIED     BY               DESCRIPTION
+!----------------------------------------------------------------------!
+! 2011-03           PAUL M. CRAIG    ADDED NEW APPROACH FOR KEYBOARD RUN CONTROLS
+!                                    TO ELIMINATE INCOMPATIBILITIES WITH 64BIT  
+
+#ifdef _WIN  
+! *****************************************************************************
+LOGICAL FUNCTION KEY_PRESSED()  
+  ! *** DETERMINES IF THE USER HAS PRESSED A KEY
+
+  USE IFCORE
+  
+  KEY_PRESSED = PEEKCHARQQ ( )
+  
+END FUNCTION KEY_PRESSED
+
+! *****************************************************************************
+LOGICAL FUNCTION ISEXIT()
+  ! *** DETERMIMES IF THE KEYBOARD HIT RESUMES (I1 /= I2) OR TERMINATES (I1 == I2) THE RUN
+  
+  USE IFCORE
+  USE GLOBAL,ONLY:IK4
+  
+  INTEGER(IK4) :: I1, I2
+  CHARACTER*1 :: KEY
+  
+  KEY = GETCHARQQ()
+  I1=ICHAR(KEY)
+  
+  WRITE(*,'(A)')'PROGRAM PAUSED BY USER'  
+  WRITE(*,'(A)')'  EFDC_DSI: TO EXIT PRESS THE SAME KEY: ' // KEY
+  WRITE(*,'(A)')'  EFDC_DSI: TO CONTINUE RUN PRESS ANY OTHER KEY'  
+
+  KEY = GETCHARQQ()
+  I2=ICHAR(KEY)
+  
+  IF( I1 /= I2 )THEN
+    ISEXIT = .FALSE.
+  ELSE
+     ISEXIT = .TRUE.
+  ENDIF
+  
+END FUNCTION ISEXIT
+
+! *****************************************************************************
+SUBROUTINE QUIT
+
+  USE IFCORE
+  CHARACTER KEY*1  
+
+  WRITE(6,'(/,A28,$)')'TAP ANY KEY TO EXIT EFDC_DSI'
+
+  KEY = GETCHARQQ()
+
+  RETURN
+  
+  END SUBROUTINE
+#endif
+
+#ifdef _WIN32
+! *****************************************************************************
+INTEGER(IK4) FUNCTION SET_EXCEPTION_TRAPS
+
+  USE GLOBAL,ONLY:IK4
+  USE IFPORT
+  INTEGER(IK4) IRET
+  
+  ! *** SET THE INTERFACE FOR THE EXCEPTION TRAP
+  INTERFACE TO INTEGER(4) FUNCTION ATEXIT [C,ALIAS:'_atexit'](FUN)  
+    EXTERNAL FUN  
+  END
+  EXTERNAL QUIT  
+  
+  WRITE(*,'(A)') 'SETTING EXCEPTION TRAPS'  
+  IRET = ATEXIT(QUIT)
+  IF( IRET /= 0 ) STOP 'CAN''T TRAP EXCEPTIONS'  
+  
+  SET_EXCEPTION_TRAPS = IRET
+  
+END FUNCTION  SET_EXCEPTION_TRAPS
+#endif
+      
