@@ -69,5 +69,5 @@ The EFDC+ end of run screen contains the CPU usage for the run.  The CPU usage i
 |eor_screen|
 
 
-.. |omp_perf| image:: images/omp_performance.png
+.. |omp_perf| image:: images/omp_performance.PNG
 .. |eor_screen| image:: images/eor_screen.png
