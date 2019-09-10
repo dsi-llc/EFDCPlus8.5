@@ -22,67 +22,13 @@ EFDC+ is a state-of-the-art hydrodynamic model that can be used to simulate aqua
 
 ``docs`` - Contains documentation for EFDC+
 
-The contents of each folder is described below:
+# Documentation
 
-	EFDC/ - 
-		|-- DebugDP64/ 
-			`-- *.dll
-		|-- DebugSP/
-			`-- *.dll
-		|-- DebugSP64/
-			`-- EFDC.exe
-			`-- *.dll
-		|-- ReleaseDP64/
-			`--EFDC.exe
-			`--*.dll
-		|-- ReleaseSP/
-			`-- EFDC.exe
-			`-- *.dll
-		|-- ReleaseSP64/
-			`-- EFDC.exe
-			`-- *.dll
-		`-- *.f90
+Documentation may be found here: https://dsi-llc.github.io/EFDCPlus/build/index.html
 
-	NetCDFLib/
-		|--	include/
-			`-- C++ header files
-		|--	lib/
-			`-- *.lib 
+# Installation
 
-	GridGenerator
-		`--GridGenerator.exe
-		`--	*.dll
-
-	GetEFDC/
-		|-- src/
-			`-- *.f90
-
-	WASP/
-	
-	SampleModels/
-		|-- Ohio_River_4
-		|-- Lake_T_HYR_WQ
-		|-- Lake_Washington
-
-	docs/ 
-		|-- build/
-			`--*.rst
-		|-- gridgen/
-			`--*.rst
-		|-- images/
-			`--*.rst
-		|-- inputfiles/
-			`--*.rst
-		|-- outputfiles/
-			`--*.rst
-		|-- samplemodels/
-			`--*.rst
-		|-- started/
-			`--*.rst
-		|-- _images/
-		`-- conf.py - Sets up configuration for Sphinx documentation builder
-		`-- index.rst - Root RST file
-		`-- license.rst
+Information on installation may be found in the documentation here: https://dsi-llc.github.io/EFDCPlus/build/started/build.html
 		
 # License
 
