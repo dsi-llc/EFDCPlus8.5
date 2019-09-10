@@ -37,12 +37,12 @@ version = u'8.5'
 release = u'8.5.0'
 
 # BREATHE configuration information
-breathe_path = "c:/program files (x86)/intelswtools/intelpython3/lib/site-packages"
-sys.path.append(breathe_path)
+# breathe_path = "c:/program files (x86)/intelswtools/intelpython3/lib/site-packages"
+# sys.path.append(breathe_path)
 
 doxy_xml_path = "C:/Users/DSI/Documents/Source/Repos/EFDC+/doxygen/xml"
-breathe_projects        = {"EFDC_8.5": doxy_xml_path}
-breathe_default_project = "EFDC_8.5"
+#breathe_projects        = {"EFDC_8.5": doxy_xml_path}
+#breathe_default_project = "EFDC_8.5"
 
 
 # -- General configuration ---------------------------------------------------
@@ -63,9 +63,9 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
-    'sphinx.ext.githubpages',
-    'breathe'
+    'sphinx.ext.githubpages'
 ]
+# breathe removed
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
