@@ -16,7 +16,7 @@ EFDC+ is a state-of-the-art hydrodynamic model that can be used to simulate aqua
 
 ``GetEFDC`` - Contains source code for building utility that helps extract EFDC+ formatted binary time series data
 
-``WASP`` - Provides files necessary for linkage with the WASP code (advanced used feature)
+``WASP`` - Provides files necessary for linkage with the WASP code (advanced user feature)
 
 ``SampleModels/`` - Contains several sample EFDC+ models
 
