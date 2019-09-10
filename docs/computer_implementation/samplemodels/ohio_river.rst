@@ -13,4 +13,4 @@ In the model there are 510 horizontal grid cells and 1 and 4 vertical layers.  A
 |image1|
 
 
-.. |image1| image:: images/grid_ohio.png
+.. |image1| image:: images/grid_ohio.PNG

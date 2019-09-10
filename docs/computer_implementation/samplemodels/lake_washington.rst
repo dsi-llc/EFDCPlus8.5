@@ -14,4 +14,4 @@ The model has 1,183 horizontal grid cells and 55 vertical layers.  The model dom
 |image1|
 
 
-.. |image1| image:: images/grid_lake_wash.png
+.. |image1| image:: images/grid_lake_wash.PNG
