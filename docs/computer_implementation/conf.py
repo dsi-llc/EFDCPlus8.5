@@ -29,7 +29,7 @@ import sphinx_rtd_theme
 
 project = u'EFDCPlus'
 copyright = u'DSI, LLC'
-author = u'Zander Mausolff'
+author = u'DSI, LLC'
 
 # The short X.Y version
 version = u'8.5'
