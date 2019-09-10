@@ -8,27 +8,23 @@ EFDC+ is a state-of-the-art hydrodynamic model that can be used to simulate aqua
 
 # Contents of this Repository
 
-``EFDC`` - Contains all source code to build EFDC+ and executables for different build configurations
+``EFDC`` - Contains source code to build EFDC+, sample executables for different build options.
 
-``NetCDFLib`` - Necessary library files for building EFDC+ to enable output into a NetCDF file format
+``NetCDFLib`` - Necessary library files for building EFDC+ so it can write NetCDF files out.
 
 ``GridGenerator`` - Contains the executable for the simple Grid Generator for EFDC+
 
-``GetEFDC`` - Contains source code for building utility that helps extract EFDC+ formatted binary time series data
+``GetEFDC`` - Contains source code for building utility that helps extract EFDC+ formatted binary time series data.
 
-``WASP`` - Provides files necessary for linkage with the WASP code (advanced user feature)
+``WASP`` - Provides some files necessary for linkage with the WASP code (advanced user feature).
 
-``SampleModels/`` - Contains several sample EFDC+ models
+``SampleModels/`` - Contains several sample EFDC+ models.
 
-``docs`` - Contains documentation for EFDC+
-
-# Documentation
-
-Documentation may be found here: https://dsi-llc.github.io/EFDCPlus/build/index.html
+``docs`` - Contains the computer implementation guide and the theory documentation for EFDC+.
 
 # Installation
 
-Information on installation may be found in the documentation here: https://dsi-llc.github.io/EFDCPlus/build/started/build.html
+Information on installation may be found in the computer implementation guide: https://efdcplus.readthedocs.io/en/latest/started/build.html
 		
 # License
 
