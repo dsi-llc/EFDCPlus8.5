@@ -108,6 +108,14 @@ Sample GetEFDC Input File
 
 .. literalinclude :: ./getefdc.inp
 
+Additional sample GetEFDC input files are available for each of the sample models provided.  Each of these input files can be found under:
+
+* ``EFDCPlus/SampleModels/Lake_T_HYD_WQ/GetEFDC/``
+
+* ``EFDCPlus/SampleModels/Lake_Washington/GetEFDC/``
+
+* ``EFDCPlus/SampleModels/Ohio_River_4/GetEFDC/``
+
 
 Output Files
 ------------
