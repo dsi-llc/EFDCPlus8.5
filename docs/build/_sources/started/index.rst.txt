@@ -23,6 +23,8 @@ After cloning the EFDC+ repository the following folders will be available under
 
 ``WASP`` - Provides some files necessary for linkage with the WASP code (advanced used feature).
 
+``SampleModels/`` - Contains several sample EFDC+ models.
+
 ``docs`` - contains documentation for EFDC+.
 
 The contents of each folder is described below:
@@ -65,25 +67,29 @@ The contents of each folder is described below:
 	GetEFDC/
 		|-- src/
 			`-- *.f90
-		|-- GetEFDC_User_Guide.pdf
 
 	WASP/
+	
+	SampleModels/
+		|-- Ohio_River_4
+		|-- Lake_T_HYR_WQ
+		|-- Lake_Washington
 
 	docs/ 
 		|-- build/
-			`--*.rt
+			`--*.rst
 		|-- gridgen/
-			`--*.rt
+			`--*.rst
 		|-- images/
-			`--*.rt
+			`--*.rst
 		|-- inputfiles/
-			`--*.rt
+			`--*.rst
 		|-- outputfiles/
-			`--*.rt
+			`--*.rst
 		|-- samplemodels/
-			`--*.rt
+			`--*.rst
 		|-- started/
-			`--*.rt
+			`--*.rst
 		|-- _images/
 		`-- conf.py - Sets up configuration for Sphinx documentation builder
 		`-- index.rst - Root RST file
