@@ -12,4 +12,4 @@ In the model there are 355 horizontal grid cells 1 vertical layer.
 |image1|
 
 
-.. |image1| image:: images/grid_lake_2d.png
+.. |image1| image:: images/grid_lake_2d.PNG
