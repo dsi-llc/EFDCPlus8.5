@@ -27,7 +27,7 @@ import sphinx_rtd_theme
 
 # -- Project information -----------------------------------------------------
 
-project = u'EFDCPlus'
+project = u'EFDC+'
 copyright = u'DSI, LLC'
 author = u'DSI, LLC'
 
@@ -129,7 +129,7 @@ html_static_path = ['_static']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'EFDCPlus Users Manual'
+htmlhelp_basename = 'EFDC+ Users Manual'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -158,7 +158,7 @@ latex_file_name = 'efdc_plus.tex'
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, latex_file_name, u'EFDCPlus Documentation',
+    (master_doc, latex_file_name, u'EFDC+ Documentation',
      u'DSI,LLC', 'manual'),
 ]
 
@@ -179,8 +179,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'EFDCPlus', u'EFDCPlus Users Manual',
-     author, 'EFDCPlus', 'Version 8.5 of EFDC+, developed by DSI, LLC',
+    (master_doc, 'EFDC+', u'EFDC+ Users Manual',
+     author, 'EFDC+', 'Version 8.5 of EFDC+, developed by DSI, LLC',
      'Miscellaneous'),
 ]
 
