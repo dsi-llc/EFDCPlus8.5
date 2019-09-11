@@ -159,7 +159,7 @@ latex_file_name = 'efdc_plus.tex'
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (master_doc, latex_file_name, u'EFDCPlus Documentation',
-     u'Zander Mausolff', 'manual'),
+     u'DSI,LLC', 'manual'),
 ]
 
 
