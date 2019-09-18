@@ -26,6 +26,10 @@ EFDC+ is a state-of-the-art hydrodynamic model that can be used to simulate aqua
 
 Information on installation may be found in the computer implementation guide: https://efdcplus.readthedocs.io/en/latest/started/build.html
 		
+# Issues
+
+If there is an issue or bug please report it on the Issues tab or click the following link: https://github.com/dsi-llc/EFDCPlus/issues
+
 # License
 
 Redistribution and use in source and binary forms, with or without modification, 
