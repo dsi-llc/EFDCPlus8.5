@@ -76,13 +76,11 @@ SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)
   !$OMP END DO
   !$OMP END PARALLEL
   
-  !DIR$ SIMD
   DO L=2,LA 
     PCG(L) = RCG(L)*CCCI(L)  
   ENDDO
     
   RPCG=0.  
-  !DIR$ SIMD
   DO L=2,LA 
     RPCG = RPCG + RCG(L)*PCG(L)  
   ENDDO
@@ -111,7 +109,6 @@ SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)
       LF=2+(ND-1)*LDMOPT  
       LL=MIN(LF+LDMOPT-1,LA)
 
-      !DIR$ SIMD
       DO L=LF,LL 
         APCG(L) = CCC(L)*PCG(L) + CCS(L)*PS(L) + CCN(L)*PN(L) + CCW(L)*PW(L) + CCE(L)*PE(L)  
       ENDDO  
@@ -121,7 +118,6 @@ SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)
     ! *** PULLED OUT OF DOMAIN LOOP TO PREVENT ROUNDOFF ERROR
     !$OMP SINGLE
     PAPCG=0.
-    !DIR$ SIMD
     DO L=2,LA
       PAPCG = PAPCG + APCG(L)*PCG(L)  
     ENDDO  
@@ -132,7 +128,6 @@ SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)
     DO ND=1,NOPTIMAL  
       LF=2+(ND-1)*LDMOPT  
       LL=MIN(LF+LDMOPT-1,LA)
-      !DIR$ SIMD
       DO L=LF,LL 
         P(L)      = P(L) + ALPHA*PCG(L)
         RCG(L)    = RCG(L) - ALPHA*APCG(L)  
@@ -145,7 +140,6 @@ SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)
     !$OMP SINGLE
     RPCGN = 0.
     RSQ = 0.
-    !DIR$ SIMD
     DO L=2,LA
       RPCGN = RPCGN + RCG(L)*TMPCG(L)  
       RSQ   = RSQ   + RCG(L)*RCG(L)  
@@ -160,7 +154,6 @@ SUBROUTINE CONGRAD(NOPTIMAL,LDMOPT)
       DO ND=1,NOPTIMAL  
         LF=2+(ND-1)*LDMOPT  
         LL=MIN(LF+LDMOPT-1,LA)
-        !DIR$ SIMD
         DO L=LF,LL 
           PCG(L) = TMPCG(L) + BETA*PCG(L)  
         ENDDO  
